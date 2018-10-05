@@ -6,30 +6,37 @@ import numpy as np
 class BAHAMASDataset:
     """Dataset that deals with loading the BAHAMAS stacks.
     
-    Arguments:
-        files (list): List of dicts describing the data files. See below for a 
-            description of the required entries.
-        root_path (str, optional): Path where the data files will be looked for. 
-            If not provided, the data files are expected to be in the current 
-            directory or specified with absolute paths. (default None).
-        redshifts (list, numpy.ndarray, optional): Redshifts that should be 
-            included. If not provided, uses all redshifts in the files. 
-            (default None).
-        input_field (str, optional): Field to be used as input (default ``"dm"``).
-        label_fields (list, optional): List of fields to be used as labels. If not 
-            provided uses all fields in the files (except input_field). 
-            (default None).
-        n_tile (int, optional): Number of tiles per stack, where the total 
-            number of tiles is n_tile^2. (default 4).
-        transform (callable, optional): Transform to be applied to the samples. The 
-            callable needs to have the signature ``f(x, field, z, **kwargs)``, 
-            where ``x`` is the data to be transformed, ``field`` the field of 
-            the data, and ``z`` the redshift. 
-            (default ``lambda x, field, z, **kwargs: x``).
-        inverse_transform (callable, optional): Inverse transform. The required 
-            signature is the same as for the transform. 
-            (default ``lambda x, field, z, **kwargs: (field, z, kwargs["mean"], kwargs["var"])``).
-        verbose (bool, optional): Verbosity of the output (default False).
+    Arguments
+    ---------
+    files :list
+        List of dicts describing the data files. See below for a description of 
+        the required entries.
+    root_path :str, optional
+        Path where the data files will be looked for. If not provided, the data 
+        files are expected to be in the current directory or specified with 
+        absolute paths. (default None).
+    redshifts : list, numpy.ndarray, optional
+        Redshifts that should be included. If not provided, uses all redshifts 
+        in the files. (default None).
+    input_field : str, optional
+        Field to be used as input (default ``"dm"``).
+    label_fields : list, optional
+        List of fields to be used as labels. If not provided uses all fields in 
+        the files (except input_field). (default None).
+    n_tile : int, optional
+        Number of tiles per stack, where the total number of tiles is n_tile^2. 
+        (default 4).
+    transform : callable, optional
+        Transform to be applied to the samples. The callable needs to have the 
+        signature ``f(x, field, z, **kwargs)``, where ``x`` is the data to be 
+        transformed, ``field`` the field of the data, and ``z`` the redshift. 
+        (default ``lambda x, field, z, **kwargs: x``).
+    inverse_transform : callable, optional
+        Inverse transform. The required signature is the same as for the 
+        transform. 
+        (default ``lambda x, field, z, **kwargs: (field, z, kwargs["mean"], kwargs["var"])``).
+    verbose : bool, optional
+        Verbosity of the output (default False).
     """
     def __init__(self, files, root_path=None,
                  redshifts=None,
@@ -95,16 +102,22 @@ class BAHAMASDataset:
     def get_stack(self, field, z, flat_idx):
         """Returns a stack for a given field, redshift, and index.
         
-        Arguments:
-            field (str): Field of the requested stack.
-            z (float): Redshift of the requested stack.
-            flat_idx (int): Index of the requested stack.
+        Arguments
+        ---------
+        field : str
+            Field of the requested stack.
+        z : float
+            Redshift of the requested stack.
+        flat_idx : int
+            Index of the requested stack.
             
-        Returns:
-            (tuple): Tuple containing:
-                (2d numpy.array): 250 Mpc/h equivalent stack.
-                (dict): Dictionary with statistics of the stack. At this point only 
-                    contains the mean and variance of all stacks in the dataset.
+        Returns
+        -------
+        stack : 2d numpy.array
+            250 Mpc/h equivalent stack.
+        stats : dict
+            Dictionary with statistics of the stack. At this point only contains 
+            the mean and variance of all stacks in the dataset.
         """
 
         flat_idx = flat_idx%self.n_sample
@@ -139,15 +152,20 @@ class BAHAMASDataset:
     def get_input_sample(self, idx, transform=True):
         """Get a sample for the input field.
 
-        Arguments:
-            idx (int): The index of the sample.
-            transform (bool, optional): Transform the data. If True, returns the 
-                inverse transform. (default True). 
+        Arguments
+        ---------
+        idx : int
+            The index of the sample.
+        transform :bool, optional
+            Transform the data. If True, returns the  inverse transform. 
+            (default True). 
         
-        Returns:
-            (tuple): Tuple containing:
-                (2d numpy.array): Stack for the input field and index ``idx``.
-                (callable): Inverse transform (only if ``transform == True``).
+        Returns
+        -------
+        output : 2d numpy.array
+            Stack for the input field and index ``idx``.
+        inverse transform : callable
+            Inverse transform (only if ``transform == True``).
         """
 
         z = self.sample_idx_to_redshift(idx)
@@ -164,15 +182,20 @@ class BAHAMASDataset:
     def get_label_sample(self, idx, transform=True):
         """Get a sample for the label fields.
 
-        Arguments:
-            idx (int): The index of the sample.
-            transform (bool, optional): Transform the data. If True, returns the 
-                inverse transform. (default True). 
+        Arguments
+        ---------
+        idx : int
+            The index of the sample.
+        transform : bool, optional
+            Transform the data. If True, returns the inverse transform. 
+            (default True). 
         
-        Returns:
-            (tuple): Tuple containing:
-                (list of 2d numpy.arrays): Stacks for the label fields and index ``idx``. 
-                (callable): Inverse transform (only if `transform == True``).
+        Returns
+        -------
+        output : list
+            List of stacks for the input field and index ``idx``.
+        inverse transform : callable
+            Inverse transform (only if ``transform == True``).
         """
 
         z = self.sample_idx_to_redshift(idx)
