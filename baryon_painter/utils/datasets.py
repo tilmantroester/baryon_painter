@@ -101,10 +101,10 @@ class BAHAMASDataset:
             flat_idx (int): Index of the requested stack.
             
         Returns:
-            d (2d numpy.array): 250 Mpc/h equivalent stack.
-            stats (dict): Dictionary with statistics of the stack. At this point
-                only contains the mean and variance of all stacks in the
-                dataset.
+            (tuple): Tuple containing:
+                (2d numpy.array): 250 Mpc/h equivalent stack.
+                (dict): Dictionary with statistics of the stack. At this point only 
+                    contains the mean and variance of all stacks in the dataset.
         """
 
         flat_idx = flat_idx%self.n_sample
@@ -145,9 +145,9 @@ class BAHAMASDataset:
                 inverse transform. (default True). 
         
         Returns:
-            d_input (2d numpy.array): Stack for the input field and index ``idx``.
-            input_inv_transform (callable): Inverse transform (only if 
-                ``transform == True``).
+            (tuple): Tuple containing:
+                (2d numpy.array): Stack for the input field and index ``idx``.
+                (callable): Inverse transform (only if ``transform == True``).
         """
 
         z = self.sample_idx_to_redshift(idx)
@@ -170,10 +170,9 @@ class BAHAMASDataset:
                 inverse transform. (default True). 
         
         Returns:
-            d_labels (list of 2d numpy.array): Stacks for the label fields and 
-                index ``idx``.
-            input_inv_transform (callable): Inverse transform (only if 
-                ``transform == True``).
+            (tuple): Tuple containing:
+                (list of 2d numpy.arrays): Stacks for the label fields and index ``idx``. 
+                (callable): Inverse transform (only if `transform == True``).
         """
 
         z = self.sample_idx_to_redshift(idx)
@@ -198,8 +197,8 @@ class BAHAMASDataset:
     def __len__(self):
         """Return total number of samples.
 
-        The total number of samples is given by `
-        `(n_stack_100*n_tile**2)*(n_stack_150*n_tile**2)*len(redshifts)``.
+        The total number of samples is given by 
+        ``(n_stack_100*n_tile**2)*(n_stack_150*n_tile**2)*len(redshifts)``.
         """
         return self.n_sample*len(self.redshifts)
     
