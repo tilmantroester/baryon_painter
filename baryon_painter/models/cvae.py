@@ -1,4 +1,7 @@
 import torch
+import math
+
+pi = math.pi
 
 class Flatten(torch.nn.Module):
     def __init__(self):

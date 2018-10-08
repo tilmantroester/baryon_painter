@@ -93,12 +93,58 @@ class BAHAMASDataset:
         self.transform = transform
         self.inverse_transform = inverse_transform
         
-    def create_inverse_transform(self, field, z, d, **stats):
+    def create_inverse_transform(self, field, z, **stats):
         """Creates a callable for the inverse transform of the form f(x)."""
 
-        return lambda x: self.inverse_transform(x, field, z, original=d, **stats)
+        return lambda x: self.inverse_transform(x, field, z, **stats)
         
-    
+    def get_inverse_transforms(self, idx):
+        """Get the inverse transforms for a stack.
+
+        Arguments
+        ---------
+        idx : int
+            Index of the stack.
+
+        Returns
+        -------
+        inv_transforms : list
+            List of the inverse transforms for the input and label fields.
+        """
+        z = self.sample_idx_to_redshift(idx)
+
+        inv_transforms = []
+        for field in self.input_field+self.label_fields:
+            stats = self.get_stack_stats(field, z)
+            inv_transforms.append(self.create_inverse_transform(field, z, **stats))
+
+        return inv_transforms
+
+    def get_stack_stats(self, field, z):
+        """Returns stack stats for a given field and redshift.
+        
+        Arguments
+        ---------
+        field : str
+            Field of the requested stack.
+        z : float
+            Redshift of the requested stack.
+            
+        Returns
+        -------
+        stats : dict
+            Dictionary with statistics of the stack. At this point only contains 
+            the mean and variance of all stacks in the dataset.
+        """
+        mean_100 = self.data[field][z]["mean_100"]
+        mean_150 = self.data[field][z]["mean_150"]
+        var_100 = self.data[field][z]["var_100"]
+        var_150 = self.data[field][z]["var_150"]
+        
+        stats = {"mean" : mean_100+mean_150,
+                 "var"  : var_100+var_150}
+        return stats
+
     def get_stack(self, field, z, flat_idx):
         """Returns a stack for a given field, redshift, and index.
         
@@ -132,13 +178,7 @@ class BAHAMASDataset:
         d_100 = self.data[field][z]["100"][slice_idx_100][tile_idx_100]
         d_150 = self.data[field][z]["150"][slice_idx_150][tile_idx_150]
         
-        mean_100 = self.data[field][z]["mean_100"]
-        mean_150 = self.data[field][z]["mean_150"]
-        var_100 = self.data[field][z]["var_100"]
-        var_150 = self.data[field][z]["var_150"]
-        
-        stats = {"mean" : mean_100+mean_150,
-                 "var"  : var_100+var_150}
+        stats = self.get_stack_stats(field, z)
         
         return d_100+d_150, stats
     
@@ -164,20 +204,15 @@ class BAHAMASDataset:
         -------
         output : 2d numpy.array
             Stack for the input field and index ``idx``.
-        inverse transform : callable
-            Inverse transform (only if ``transform == True``).
         """
 
         z = self.sample_idx_to_redshift(idx)
 
         d_input, input_stats = self.get_stack(self.input_field, z, idx)
-        if not transform:
-            return d_input
-        else:
-            input_inv_transform = self.create_inverse_transform(self.input_field, z, d_input, **input_stats)
+        if transform:
             d_input = self.transform(d_input, self.input_field, z, **input_stats)
 
-            return d_input, input_inv_transform
+        return d_input
 
     def get_label_sample(self, idx, transform=True):
         """Get a sample for the label fields.
@@ -194,28 +229,19 @@ class BAHAMASDataset:
         -------
         output : list
             List of stacks for the input field and index ``idx``.
-        inverse transform : callable
-            Inverse transform (only if ``transform == True``).
         """
 
         z = self.sample_idx_to_redshift(idx)
         
         d_labels = []
-        label_inv_transforms = []
         for label_field in self.label_fields:
             d, stats = self.get_stack(label_field, z, idx)
-            
             if transform:
-                inv_transform = self.create_inverse_transform(label_field, z, d, **stats)
-                label_inv_transforms.append(inv_transform)
                 d = self.transform(d, label_field, z, **stats)
             
             d_labels.append(d)
             
-        if not transform:
-            return d_labels
-        else:
-            return d_labels, label_inv_transforms
+        return d_labels
     
     def __len__(self):
         """Return total number of samples.
@@ -227,8 +253,8 @@ class BAHAMASDataset:
     
     def __getitem__(self, idx):
         if not isinstance(idx, collections.Iterable):
-            d_input, input_inv_transform = self.get_input_sample(idx)
-            d_label, label_inv_transforms = self.get_label_sample(idx)
+            d_input = self.get_input_sample(idx)
+            d_label = self.get_label_sample(idx)
             
-            return [d_input]+d_label, [input_inv_transform]+label_inv_transforms     
+            return [d_input]+d_label     
 
