@@ -97,7 +97,6 @@ def plot_power_spectra(output_true, output_pred, input, L,
             Pk_true, k, Pk_var_true, n_mode = cosmotools.power_spectrum_tools.pseudo_Pofk(A_true, B_true, L, k_min=k_min, k_max=k_max, n_k_bin=n_k_bin, logspaced_k_bins=logspaced_k_bins)
             Pk_pred, k, Pk_var_pred, n_mode = cosmotools.power_spectrum_tools.pseudo_Pofk(A_pred, B_pred, L, k_min=k_min, k_max=k_max, n_k_bin=n_k_bin, logspaced_k_bins=logspaced_k_bins)
             
-            print(k, Pk_true, Pk_pred)
             ax[0,i].loglog(k, k**2 * Pk_true, alpha=0.5, c="C0", label="")
             ax[0,i].loglog(k, k**2 * Pk_pred, alpha=0.5, c="C1", label="")
             

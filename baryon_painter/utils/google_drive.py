@@ -15,7 +15,7 @@ def get_folder_contents(service, folder_id):
     return response["files"]
 
 def download_file(service, file_id, file_name, file_size, download_path):
-    print(f"Downloading {file_name} ({file_size/1024**2:.1f} MB):", end="")
+    print(f"Downloading {file_name} ({int(file_size)/1024**2:.1f} MB):", end="")
 
     request = service.files().get_media(fileId=file_id)
     downloaded = io.BytesIO()
