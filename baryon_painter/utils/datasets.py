@@ -41,9 +41,11 @@ class BAHAMASDataset:
     def __init__(self, files, root_path=None,
                  redshifts=None,
                  input_field="dm", label_fields=None, 
-                 n_tile=4, 
+                 n_tile=4,
+                 L=400,
                  transform=lambda x, field, z, **kwargs: x, 
-                 inverse_transform=lambda x, field, z, **kwargs: (field, z, kwargs["mean"], kwargs["var"]), 
+                 inverse_transform=lambda x, field, z, **kwargs: (field, z, kwargs["mean"], kwargs["var"]),
+                 n_feature_per_field=1,
                  verbose=False):
         self.data = {}
         
@@ -78,6 +80,9 @@ class BAHAMASDataset:
         self.n_tile = n_tile
         self.tile_size = self.n_grid//self.n_tile
         self.n_sample = (self.n_stack_100*self.n_tile**2)*(self.n_stack_150*self.n_tile**2)
+
+        self.L = L
+        self.tile_L = self.L/self.n_tile
         
         self.fields = list(self.data.keys())
             
@@ -92,6 +97,8 @@ class BAHAMASDataset:
             
         self.transform = transform
         self.inverse_transform = inverse_transform
+
+        self.n_feature_per_field = n_feature_per_field
         
     def create_inverse_transform(self, field, z, **stats):
         """Creates a callable for the inverse transform of the form f(x)."""
@@ -114,7 +121,7 @@ class BAHAMASDataset:
         z = self.sample_idx_to_redshift(idx)
 
         inv_transforms = []
-        for field in self.input_field+self.label_fields:
+        for field in [self.input_field]+self.label_fields:
             stats = self.get_stack_stats(field, z)
             inv_transforms.append(self.create_inverse_transform(field, z, **stats))
 
@@ -256,5 +263,5 @@ class BAHAMASDataset:
             d_input = self.get_input_sample(idx)
             d_label = self.get_label_sample(idx)
             
-            return [d_input]+d_label     
+            return [d_input]+d_label, idx
 
