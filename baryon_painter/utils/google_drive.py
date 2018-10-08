@@ -15,7 +15,7 @@ def get_folder_contents(service, folder_id):
     return response["files"]
 
 def download_file(service, file_id, file_name, file_size, download_path):
-    print(f"Downloading {file_name}:", end="")
+    print(f"Downloading {file_name} ({file_size/1024**2:.1f} MB):", end="")
 
     request = service.files().get_media(fileId=file_id)
     downloaded = io.BytesIO()
@@ -38,6 +38,8 @@ def download_files_in_folder(folder_id, download_path):
     drive_service = build('drive', 'v3')
 
     file_infos = get_folder_contents(drive_service, folder_id)
+    # Sort by filename
+    file_infos = sorted(file_infos, key=lambda k: k["name"])
     
     print(f"Writing downloaded files to {download_path}")
     for file_info in file_infos:
