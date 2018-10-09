@@ -13,7 +13,7 @@ def plot_samples(output_true, output_pred, input, n_sample=4,
                  n_feature_per_field=1,
                  tile_size=1):
     n_row = 2*min(output_true.shape[0], n_sample)
-    n_col = (output_true.shape[1]+1)*n_feature_per_field
+    n_col = (output_true.shape[1]+n_feature_per_field)
     
     fig, ax = plt.subplots(n_row, n_col, sharex=True, sharey=True, figsize=(n_col*tile_size, n_row*tile_size))
     fig.subplots_adjust(hspace=0.02, wspace=0.02*n_col/n_row)
@@ -46,9 +46,8 @@ def plot_samples(output_true, output_pred, input, n_sample=4,
                 ax[2*i,j+1].imshow(output_true_plot, **imshow_kwargs[j+1])
                 ax[2*i+1,j+1].imshow(output_pred_plot, **imshow_kwargs[j+1])
             else:
-                for k in range(n_feature_per_field):
-                    ax[2*i,n_feature_per_field*(j+1)+k].imshow(output_true_plot[k], **imshow_kwargs[j+1])
-                    ax[2*i+1,n_feature_per_field*(j+1)+k].imshow(output_pred_plot[k], **imshow_kwargs[j+1])
+                ax[2*i,j+n_feature_per_field].imshow(output_true_plot, **imshow_kwargs[j//n_feature_per_field+1])
+                ax[2*i+1,j+n_feature_per_field].imshow(output_pred_plot, **imshow_kwargs[j//n_feature_per_field+1])
     
     for p in ax.flat:
         p.grid("off")

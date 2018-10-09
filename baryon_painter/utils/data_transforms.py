@@ -28,4 +28,45 @@ def create_split_scale_transform(n_scale=3, step_size=4, include_original=True):
         d_out[int(include_original)] = d_in
         return d_out
     
-    return split_scale_transform
+    def inv_split_scale_transform(x, field, z, **kwargs):
+        if include_original:
+            if x.shape[0] != n_scale+1:
+                raise RuntimeError(f"Invalid shape of input. Expected x.shape[0] == {n_scale+1} but got {x.shape[0]}.")
+            return x[0]
+        else:
+            if x.shape[0] != n_scale:
+                raise RuntimeError(f"Invalid shape of input. Expected x.shape[0] == {n_scale} but got {x.shape[0]}.")
+            return x.sum(axis=0)
+        
+    return split_scale_transform, inv_split_scale_transform
+
+def chain_transformations(transformations):
+    def transform(x, field, z, **kwargs):
+        for t in transformations:
+            x = t(x, field, z, **kwargs)
+        return x
+    return transform
+    
+def create_range_compress_transforms(k_values):
+    def transform(x, field, z, **kwargs):
+        k = k_values[field]
+        mean = kwargs["mean"]
+        std = np.sqrt(kwargs["var"])
+        return np.where(x > 0, np.tanh(np.log(x/std)/k), -1)
+    
+    def inv_transform(x, field, z, **kwargs):
+        k = k_values[field]
+        mean = kwargs["mean"]
+        std = np.sqrt(kwargs["var"])
+        return np.where(x > -1, np.exp(np.arctanh(x)*k)*std, 0)
+    
+    return transform, inv_transform
+
+def atleast_3d(x, *args, **kwargs):
+    if x.ndim == 2:
+        return x.reshape(1, *x.shape)
+    else:
+        return x
+
+def squeeze(x, *args, **kwargs):
+    return x.squeeze()

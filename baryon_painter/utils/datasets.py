@@ -100,25 +100,69 @@ class BAHAMASDataset:
 
         self.n_feature_per_field = n_feature_per_field
         
+    def create_transform(self, field, z, **stats):
+        """Creates a callable for the transform of the form f(x)."""
+
+        return lambda x: self.transform(x, field, z, **stats)
+    
     def create_inverse_transform(self, field, z, **stats):
         """Creates a callable for the inverse transform of the form f(x)."""
 
         return lambda x: self.inverse_transform(x, field, z, **stats)
         
-    def get_inverse_transforms(self, idx):
+    def get_transforms(self, idx=None, z=None):
+        """Get the transforms for a stack.
+
+        Arguments
+        ---------
+        idx : int, optional
+            Index of the stack.
+        z : float, optional
+            Redshift of the stack.
+            
+        Either ``idx`` or ``z`` have to be specified.
+        
+        Returns
+        -------
+        transforms : list
+            List of the transforms for the input and label fields.
+        """
+        if idx is None and z is None:
+            raise ValueError("Either idx or z have to be specified.")
+            
+        if z is None:
+            z = self.sample_idx_to_redshift(idx)
+
+        transforms = []
+        for field in [self.input_field]+self.label_fields:
+            stats = self.get_stack_stats(field, z)
+            transforms.append(self.create_transform(field, z, **stats))
+
+        return transforms
+    
+    def get_inverse_transforms(self, idx=None, z=None):
         """Get the inverse transforms for a stack.
 
         Arguments
         ---------
-        idx : int
+        idx : int, optional
             Index of the stack.
+        z : float, optional
+            Redshift of the stack.
+            
+        Either ``idx`` or ``z`` have to be specified.
+            
 
         Returns
         -------
         inv_transforms : list
             List of the inverse transforms for the input and label fields.
         """
-        z = self.sample_idx_to_redshift(idx)
+        if idx is None and z is None:
+            raise ValueError("Either idx or z have to be specified.")
+            
+        if z is None:
+            z = self.sample_idx_to_redshift(idx)
 
         inv_transforms = []
         for field in [self.input_field]+self.label_fields:
