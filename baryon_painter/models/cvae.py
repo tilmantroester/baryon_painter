@@ -157,7 +157,7 @@ class CVAE(torch.nn.Module):
     def __init__(self, architecture, device="cpu"):
         super().__init__()
                               
-        self.device = device
+        self.device = torch.device(device)
         
         print("CVAE with {} architecture.".format(architecture["type"]))
         self.architecture = architecture
@@ -195,7 +195,10 @@ class CVAE(torch.nn.Module):
         self.min_z_var = 1e-7
         
         self.alpha_var = 1.0
-        self.beta_KL = 1.0        
+        self.beta_KL = 1.0
+
+        if "cuda" in self.device.type:
+            self.cuda()
         
     def Q(self, x, y):
         h_x = self.q_x_in(x)

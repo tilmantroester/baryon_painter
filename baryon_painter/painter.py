@@ -5,6 +5,7 @@ import collections
 import numpy as np
 
 import torch
+import torch.utils.data
 
 from baryon_painter.utils import validation_plotting
 from baryon_painter import models
@@ -38,7 +39,7 @@ class CVAEPainter(Painter):
 
         self.compute_device = compute_device
 
-        self.model = models.cvae.CVAE(architecture, self.compute_device)
+        self.model = models.cvae.CVAE(architecture, torch.device(self.compute_device))
         
     def load_training_data(self, filename):
         self.data_path = os.path.dirname(filename)
@@ -50,14 +51,15 @@ class CVAEPainter(Painter):
         with open(filename, "rb") as f:
             self.test_data_file_info = pickle.load(f)
 
-    def train(self, n_pepoch=64, learning_rate=1e-4, batch_size=1,
+    def train(self, n_epoch=64, learning_rate=1e-4, batch_size=1,
                     adaptive_learning_rate=None, adaptive_batch_size=None,
-                    validation_pepochs=[0, 1], validation_batch_size=1,
+                    validation_pepochs=[0, 1], validation_batch_size=4,
                     checkpoint_frequency=1000, statistics_report_frequency=50, 
                     loss_plot_frequency=1000, mavg_window_size=20,
                     show_plots=True,
                     output_path=None,
                     verbose=True,
+                    pepoch_size=3136,
                     var_anneal_fn=None, KL_anneal_fn=None):
         """Train. We use pseudo epoch as a unit of training time with 
         1 pepoch = 3136 samples and 64 pepoch = 1 epoch (assuming 4x4 tiling of the stacks)."""
@@ -71,9 +73,6 @@ class CVAEPainter(Painter):
 
         if adaptive_batch_size is None and batch_size > 0:
             dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
-
-        n_processed_samples = 0
-        n_processed_batches = 0
 
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
         if adaptive_learning_rate is not None:
@@ -101,28 +100,36 @@ class CVAEPainter(Painter):
             stats_file = open(os.path.join(output_path, "stats.txt"), "w")
             stats_file.write("# Batch nr (batch size={}), sample nr, {}\n".format(batch_size, " ,".join(stats_labels)))
         
+        n_processed_samples = 0
+        n_processed_batches = 0
+
+        last_pepoch_processed_samples = 0
         last_loss_plot = 0
         last_stat_dump = 0
-        
-        for i_pepoch in range(n_pepoch):
+        i_pepoch = 0
+
+        for i_epoch in range(n_epoch):
             if verbose: self.model.check_gpu()
             
-            if callable(var_anneal_fn):
-                self.model.alpha_var = var_anneal_fn(i_pepoch)
-            if callable(KL_anneal_fn):
-                self.model.beta_KL = KL_anneal_fn(i_pepoch)
-            if scheduler is not None:
-                scheduler.step()
-                
-            if adaptive_batch_size is not None:
-                batch_size = adaptive_batch_size(i_pepoch)
-                dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
-                
-            if i_pepoch in validation_pepochs:
-                self.validate()
-                
-        
             for i_batch, batch_data in enumerate(dataloader):
+
+                if n_processed_samples - pepoch_size >= last_pepoch_processed_samples or n_processed_samples == 0:
+                    i_pepoch += 1
+                    last_pepoch_processed_samples = n_processed_samples
+
+                    if callable(var_anneal_fn):
+                        self.model.alpha_var = var_anneal_fn(i_pepoch)
+                    if callable(KL_anneal_fn):
+                        self.model.beta_KL = KL_anneal_fn(i_pepoch)
+                    if scheduler is not None:
+                        scheduler.step()
+                        
+                    if adaptive_batch_size is not None:
+                        batch_size = adaptive_batch_size(i_pepoch)
+                        dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
+                        
+                    if i_pepoch in validation_pepochs:
+                        self.validate(validation_batch_size=validation_batch_size)
 
                 x = torch.cat(batch_data[0][1:], dim=1).to(self.model.device)
                 y = batch_data[0][0].to(self.model.device)
@@ -143,25 +150,24 @@ class CVAEPainter(Painter):
                         stats_file.write(stats.get_str() + "\n")
                         stats_file.flush()
                             
-                    if n_processed_samples - statistics_report_frequency > last_stat_dump and statistics_report_frequency > 0:
+                    if n_processed_samples - statistics_report_frequency >= last_stat_dump and statistics_report_frequency > 0:
                         last_stat_dump = n_processed_samples
                         
-                        print("P-Epoch: [{}/{}], Batch: [{}/{}], Loss: {:.3e}".format(i_pepoch, n_pepoch, 
-                                                                                    i_batch, len(self.training_data)//batch_size,
-                                                                                    stats.loss_terms["ELBO"]["mavg"][-1]))
+                        print("Epoch: [{}/{}], P-Epoch: [{}/{}], Batch: [{}/{}], Loss: {:.3e}".format(i_epoch, n_epoch, 
+                                                                                                      i_pepoch, n_epoch*len(self.training_data)//pepoch_size, 
+                                                                                                      i_batch, len(self.training_data)//batch_size,
+                                                                                                      stats.loss_terms["ELBO"]["mavg"][-1]))
                         print("Processed batches: {}, processed samples: {}, batch size: {}, learning rate: {}".format(n_processed_batches, n_processed_samples, batch_size,
                                                                                                     " ".join("{:.1e}".format(p["lr"]) for p in optimizer.param_groups)))
                         print(stats.get_pretty_str(n_col=3))
                     
-                    if n_processed_samples - loss_plot_frequency > last_loss_plot and loss_plot_frequency > 0:
+                    if n_processed_samples - loss_plot_frequency >= last_loss_plot and loss_plot_frequency > 0:
                         last_loss_plot = n_processed_samples
-                        fig, ax = plot_loss(stats, window_size=200)
+                        stats.plot_loss(window_size=200)
                         if show_plots:
                             plt.show()
                         
-        self.validate()              
-
-                        
+        self.validate(validation_batch_size=validation_batch_size)
                                                     
         stats_file.close()
                         
@@ -206,6 +212,9 @@ class CVAEPainter(Painter):
 
 
     def paint(self, input, fields=["pressure"]):
+        if input.shape != self.model.dim_y:
+            raise ValueError(f"Shape mismatch between input and model: {input.shape} vs {self.model.dim_y}")
+
         with torch.no_grad():
             y = self.data_transform["dm"](input)
             y = torch.Tensor(y, device=self.compute_device)
@@ -250,3 +259,29 @@ class TrainingStats:
                 s += "\n"
                 items_per_row = 0
         return s
+
+    def plot_loss(self, loss_term="ELBO", window_size=100):
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(1, 2, figsize=(8, 3))
+        
+        n = self.n_batches
+        if n > 500:
+            total_loss = self.loss_terms[loss_term]["all"][::n//500]
+            total_loss_mavg = self.loss_terms[loss_term]["mavg"][::n//500]
+        else:
+            total_loss = self.loss_terms[loss_term]["all"]
+            total_loss_mavg = self.loss_terms[loss_term]["mavg"]
+        
+        
+        ax[0].semilogy(np.linspace(1, n, len(total_loss)), np.abs(total_loss), alpha=0.5, label="{}".format(loss_term))
+        ax[0].semilogy(np.linspace(self.mavg_window, n, len(total_loss_mavg)), np.abs(total_loss_mavg), label="{} mavg".format(loss_term))
+        ax[0].legend()
+        
+        x_range = np.linspace(max(n-window_size,1), n, min(n, window_size))
+        ax[1].plot(x_range, total_loss[-min(n, window_size):], alpha=0.5, label="{}".format(loss_term))
+        ax[1].plot(x_range, total_loss_mavg[-min(n, window_size):], label="{} mavg".format(loss_term))
+        ax[1].legend()
+        ax[1].set_ylim(min(total_loss[-min(n, window_size):]), max(total_loss[-min(n, window_size):]))
+    
+        return fig, ax

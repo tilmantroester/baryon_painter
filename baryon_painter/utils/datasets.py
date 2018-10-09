@@ -259,9 +259,26 @@ class BAHAMASDataset:
         return self.n_sample*len(self.redshifts)
     
     def __getitem__(self, idx):
+        """Get a sample.
+
+        Arguments
+        ---------
+        idx : int
+            Index of the sample.
+
+        Returns
+        -------
+        output : list
+            List of sample fields, with order ``input_field, label_fields``.
+        idx : int
+            Index of the requested sample. This can be used to access the
+            inverse transforms.
+        """
         if not isinstance(idx, collections.Iterable):
             d_input = self.get_input_sample(idx)
             d_label = self.get_label_sample(idx)
             
             return [d_input]+d_label, idx
+        else:
+            raise NotImplementedError("Only int indicies are supported for now.")
 
