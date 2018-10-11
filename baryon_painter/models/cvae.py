@@ -186,13 +186,14 @@ class CVAE(torch.nn.Module):
                     if hasattr(m, "weight"):
                         torch.nn.init.normal_(m.weight, std=self.x_var_init_std)
                 self.p_var_out.apply(init_weight)
+                self.min_x_var = architecture["min_x_var"] if "min_x_var" in architecture else 1e-7
             else:
                 self.predict_var = False
                 self.p_var_out = None
         else:
             raise NotImplementedError("Architecture {} not supported yet!".format(architecture["type"]))
                 
-        self.min_z_var = 1e-7
+        self.min_z_var = architecture["min_z_var"] if "min_z_var" in architecture else 1e-7
         
         self.alpha_var = 1.0
         self.beta_KL = 1.0
@@ -241,7 +242,7 @@ class CVAE(torch.nn.Module):
         x_mu = params[0]
         self.x_mu = x_mu
         if self.predict_var: 
-            log_x_var = params[1]/math.log(self.dim_x[0]*self.dim_x[1]*self.dim_x[2])
+            log_x_var = params[1]/math.log(self.dim_x[0]*self.dim_x[1]*self.dim_x[2]) * torch.log(self.min_x_var)
             self.x_var = torch.exp(log_x_var)
             self.log_likelihood_fixed_var = -0.5*math.log(2*pi) + (-0.5 * (x.repeat(self.L, 1, 1, 1) - x_mu)**2).sum(3).sum(2).sum(0)/(M*self.L)
             self.log_likelihood_free_var = -0.5*math.log(2*pi) + (-0.5*log_x_var - 0.5*(x.repeat(self.L, 1, 1, 1) - x_mu)**2/self.x_var).sum(3).sum(2).sum(0)/(M*self.L)
