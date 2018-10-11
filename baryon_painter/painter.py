@@ -2,6 +2,8 @@ import os
 import pickle
 import collections
 
+import dill
+
 import numpy as np
 
 import torch
@@ -59,6 +61,7 @@ class CVAEPainter(Painter):
                     validation_pepochs=[0, 1], validation_batch_size=4,
                     checkpoint_frequency=1000, statistics_report_frequency=50, 
                     loss_plot_frequency=1000, mavg_window_size=20,
+                    plot_sample_var=False,
                     show_plots=True,
                     output_path=None,
                     verbose=True,
@@ -77,13 +80,27 @@ class CVAEPainter(Painter):
         if adaptive_batch_size is None and batch_size > 0:
             dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
         else:
-            raise NotImplementedError("Adaptive batch sizes are currently broken.")
+            batch_size = adaptive_batch_size(0)
+            dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
 
         optimizer = torch.optim.Adam(self.model.parameters(), lr=learning_rate)
         if adaptive_learning_rate is not None:
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
-                                                        step_size=adaptive_learning_rate["step_size"], 
-                                                        gamma=adaptive_learning_rate["gamma"])
+            if callable(adaptive_learning_rate):
+                scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, adaptive_learning_rate)
+            elif isinstance(adaptive_learning_rate, dict):
+                scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
+                                                            step_size=adaptive_learning_rate["step_size"], 
+                                                            gamma=adaptive_learning_rate["gamma"])
+            elif adaptive_learning_rate == "avoid_plateau":
+                scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 
+                                                                       mode="max", factor=0.1, 
+                                                                       patience=10, 
+                                                                       verbose=False, 
+                                                                       threshold=0.0001, 
+                                                                       threshold_mode="rel", 
+                                                                       cooldown=0, 
+                                                                       min_lr=0, 
+                                                                       eps=1e-08)
         else:
             scheduler = None
         
@@ -102,7 +119,7 @@ class CVAEPainter(Painter):
         if output_path is not None:
             os.makedirs(output_path, exist_ok=True)
             
-            model_checkpoint_template = os.path.join(output_path, "checkpoint_epoch{epoch}_batch{batch}_sample{sample}")
+            model_checkpoint_template = os.path.join(output_path, "checkpoint_sample{sample:010}_batch{batch}_epoch{epoch}")
 
             sample_plot_template = os.path.join(output_path, "sample_epoch{}_batch{}_sample{}.png")
             auto_power_plot_template = os.path.join(output_path, "auto_power_epoch{}_batch{}_sample{}.png")
@@ -134,9 +151,12 @@ class CVAEPainter(Painter):
         last_stat_dump = 0
         last_checkpoint_dump = 0
         
+        i_epoch = 0
         i_pepoch = 0
 
-        for i_epoch in range(n_epoch):
+        while i_epoch < n_epoch:
+            i_epoch = n_processed_samples//len(self.training_data)
+            
             if verbose: self.model.check_gpu()
             if i_pepoch >= n_pepoch:
                 break
@@ -149,20 +169,27 @@ class CVAEPainter(Painter):
                         last_pepoch_processed_samples = n_processed_samples
                         if i_pepoch >= n_pepoch:
                             break
+                            
+                        if scheduler is not None: 
+                            if adaptive_learning_rate == "avoid_plateau":
+                                scheduler.step(float(ELBO.item()))
+                            else:
+                                scheduler.step()
 
                     if callable(var_anneal_fn):
                         self.model.alpha_var = var_anneal_fn(i_pepoch)
                     if callable(KL_anneal_fn):
                         self.model.beta_KL = KL_anneal_fn(i_pepoch)
-                    if scheduler is not None:
-                        scheduler.step()
-                        
-                    if adaptive_batch_size is not None:
-                        batch_size = adaptive_batch_size(i_pepoch)
-                        dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
                         
                     if i_pepoch in validation_pepochs:
-                        self.validate(validation_batch_size=validation_batch_size)
+                        self.validate(validation_batch_size=validation_batch_size, plot_sample_var=plot_sample_var)
+                        
+                    if adaptive_batch_size is not None:
+                        new_batch_size = adaptive_batch_size(i_pepoch)
+                        if new_batch_size != batch_size:
+                            batch_size = new_batch_size
+                            dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
+                            break
 
                 x = torch.cat(batch_data[0][1:], dim=1).to(self.model.device)
                 y = batch_data[0][0].to(self.model.device)
@@ -200,26 +227,30 @@ class CVAEPainter(Painter):
                         if show_plots:
                             plt.show()
                         
-        self.validate(validation_batch_size=validation_batch_size)
+        self.validate(validation_batch_size=validation_batch_size, plot_sample_var=plot_sample_var)
                                                                             
         return stats
 
     def validate(self, validation_batch_size=8,
-                       plot_samples=1, plot_power_spectra="auto", plot_histogram="log", show_plots=True):
+                       plot_samples=1, plot_sample_var=False, plot_power_spectra="auto", plot_histogram="log", show_plots=True):
         validation_dataloader = torch.utils.data.DataLoader(self.test_data, batch_size=validation_batch_size, shuffle=True)
 
         with torch.no_grad():
             batch_data = next(validation_dataloader.__iter__())
             x = torch.cat(batch_data[0][1:], dim=1).to(self.model.device)
             y = batch_data[0][0].to(self.model.device)
-            x_pred = self.model.sample_P(y)
-
+            if plot_sample_var:
+                x_pred, x_pred_var = self.model.sample_P(y, return_var=True)
+            else:
+                x_pred = self.model.sample_P(y)
+                
             indicies = batch_data[1].numpy()
             inverse_transforms = [self.test_data.get_inverse_transforms(idx) for idx in indicies]
             if plot_samples > 0:
                 fig, _ = validation_plotting.plot_samples(output_true=x.cpu().numpy(), 
                                                  input=y.cpu().numpy(), 
                                                  output_pred=x_pred.cpu().numpy(),
+                                                 output_pred_var=x_pred_var if plot_sample_var else None,
                                                  n_sample=plot_samples,
                                                  input_label=self.test_data.input_field,
                                                  output_labels=self.test_data.label_fields,
@@ -279,12 +310,12 @@ class CVAEPainter(Painter):
         d["model_state_dict"] = self.model.state_dict()
         
         with open(filename, "wb") as f:
-            pickle.dump(d, f)
+            dill.dump(d, f)
             
             
     def load_state_from_file(self, filename, compute_device="cpu"):
         with open(filename, "rb") as f:
-            d = pickle.load(f)
+            d = dill.load(f)
         
         self.compute_device = compute_device
         self.model = models.cvae.CVAE(d["model_architecture"], torch.device(self.compute_device))
@@ -296,7 +327,7 @@ class CVAEPainter(Painter):
         self.tile_size = d["tile_size"]
         self.input_field = d["input_field"]
         self.label_fields = d["label_fields"]
-#         self.transforms = d["transforms"]
+        self.transforms = d["transforms"] if "transforms" in d else None
 
 class TrainingStats:
     def __init__(self, loss_terms=[], moving_average_window=100, dump_to_file_frequency=10, stats_filename=None):
