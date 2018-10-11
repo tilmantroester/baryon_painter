@@ -7,12 +7,16 @@ import cosmotools.plotting
 
 pi = np.pi
 
-def plot_samples(output_true, output_pred, input, n_sample=4, 
+def plot_samples(output_true, output_pred, input, output_pred_var=None,
+                 n_sample=4, 
                  input_label="", 
                  output_labels=[],
+                 plot_var=False,
                  n_feature_per_field=1,
                  tile_size=1):
-    n_row = 2*min(output_true.shape[0], n_sample)
+    
+    rows_per_sample = 2 if output_pred_var is None else 3
+    n_row = rows_per_sample*min(output_true.shape[0], n_sample)
     n_col = (output_true.shape[1]+n_feature_per_field)
     
     fig, ax = plt.subplots(n_row, n_col, sharex=True, sharey=True, figsize=(n_col*tile_size, n_row*tile_size))
@@ -45,9 +49,17 @@ def plot_samples(output_true, output_pred, input, n_sample=4,
             if n_feature_per_field == 1:
                 ax[2*i,j+1].imshow(output_true_plot, **imshow_kwargs[j+1])
                 ax[2*i+1,j+1].imshow(output_pred_plot, **imshow_kwargs[j+1])
+                if output_pred_var is not None:
+                    output_pred_var_plot = np.log(output_pred_var[i,j].squeeze())
+                    kwargs = {k : v for k, v in imshow_kwargs[j+1].items() if k != "vmin" and k != "vmax"}
+                    ax[2*i+2,j+1].imshow(output_pred_var_plot, **kwargs)
             else:
                 ax[2*i,j+n_feature_per_field].imshow(output_true_plot, **imshow_kwargs[j//n_feature_per_field+1])
                 ax[2*i+1,j+n_feature_per_field].imshow(output_pred_plot, **imshow_kwargs[j//n_feature_per_field+1])
+                if output_pred_var is not None:
+                    output_pred_var_plot = np.log(output_pred_var[i,j].squeeze())
+                    kwargs = {k : v for k, v in imshow_kwargs[j//n_feature_per_field+1].items() if k != "vmin" and k != "vmax"}
+                    ax[2*i+2,j+n_feature_per_field].imshow(output_pred_var_plot, **kwargs)
     
     for p in ax.flat:
         p.grid("off")
