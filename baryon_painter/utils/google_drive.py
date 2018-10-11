@@ -54,10 +54,14 @@ def download_files_in_folder(folder_id, download_path, exclude_filters=[]):
     
     print(f"Writing downloaded files to {download_path}")
     for file_info in file_infos:
+        skip = False
         for f in exclude_filters:
             if f in file_info["name"]:
+                skip = True
                 break
-        download_file(drive_service, 
-                      file_info["id"], file_info["name"], file_info["size"], 
-                      download_path)
+        
+        if not skip:
+            download_file(drive_service, 
+                          file_info["id"], file_info["name"], file_info["size"], 
+                          download_path)
     print("Done!")
