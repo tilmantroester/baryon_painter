@@ -39,8 +39,8 @@ class BAHAMASDataset:
         Verbosity of the output (default False).
     """
     def __init__(self, files, root_path=None,
-                 redshifts=None,
-                 input_field="dm", label_fields=None, 
+                 redshifts=[],
+                 input_field="dm", label_fields=[], 
                  n_tile=4,
                  L=400,
                  transform=lambda x, field, z, **kwargs: x, 
@@ -49,33 +49,67 @@ class BAHAMASDataset:
                  verbose=False):
         self.data = {}
         
+        self.fields = set()
+        self.redshifts = set()
+        
+        # Check which fields and redshifts are available
         for f in files:
             if isinstance(f, dict):
-                field = f["field"]
-                z = f["z"]
-                if field not in self.data:
-                    self.data[field] = {}
-                if z not in self.data[field]:
-                    self.data[field][z] = {}
-
-                fn100 = f["file_100"]
-                fn150 = f["file_150"]
-                if root_path is not None:
-                    fn100 = os.path.join(root_path, fn100)
-                    fn150 = os.path.join(root_path, fn150)
-                    
-                self.data[field][z]["100"] = np.load(fn100, mmap_mode="r")
-                self.data[field][z]["150"] = np.load(fn150, mmap_mode="r")
-                
-                self.data[field][z]["mean_100"] = f["mean_100"]
-                self.data[field][z]["mean_150"] = f["mean_150"]
-                self.data[field][z]["var_100"] = f["var_100"]
-                self.data[field][z]["var_150"] = f["var_150"]
-                
-                self.n_stack_100, self.n_grid, _ = self.data[field][z]["100"].shape
-                self.n_stack_150, _, _ = self.data[field][z]["150"].shape
+                self.fields.add(f["field"])
+                self.redshifts.add(f["z"])
             else:
                 raise ValueError("files entry is not a dict.")
+        
+        if label_fields != []:
+            # Select the intersection of the available fields and requested fields.
+            if self.fields.issuperset([input_field] + label_fields):
+                self.fields = self.fields.intersection([input_field] + label_fields)
+            else:
+                missing = set([input_field] + label_fields) - self.fields
+                raise ValueError(f"The requested fields are not in the file list: field(s) {missing} is missing.")
+        
+        self.input_field = input_field
+        self.label_fields = list(self.fields - set([self.input_field]))
+        
+        if redshifts != []:
+            # Select the intersection of the available redshifts and requested redshifts.
+            if self.redshifts.issuperset(redshifts):
+                self.redshifts = self.redshifts.intersection(redshifts)
+            else:
+                missing = set(redshifts) - self.redshifts
+                raise ValueError(f"The requested redshifts are not in the file list: redshift(s) {missing} is missing.")
+
+        self.redshifts = np.array(sorted(list(self.redshifts)))
+              
+        # Load the files now
+        for f in files:
+            field = f["field"]
+            z = f["z"]
+            if field not in self.fields or z not in self.redshifts:
+                # Don't load fields that are not requested
+                continue
+                
+            if field not in self.data:
+                self.data[field] = {}
+            if z not in self.data[field]:
+                self.data[field][z] = {}
+                    
+            fn100 = f["file_100"]
+            fn150 = f["file_150"]
+            if root_path is not None:
+                fn100 = os.path.join(root_path, fn100)
+                fn150 = os.path.join(root_path, fn150)
+
+            self.data[field][z]["100"] = np.load(fn100, mmap_mode="r")
+            self.data[field][z]["150"] = np.load(fn150, mmap_mode="r")
+
+            self.data[field][z]["mean_100"] = f["mean_100"]
+            self.data[field][z]["mean_150"] = f["mean_150"]
+            self.data[field][z]["var_100"] = f["var_100"]
+            self.data[field][z]["var_150"] = f["var_150"]
+
+            self.n_stack_100, self.n_grid, _ = self.data[field][z]["100"].shape
+            self.n_stack_150, _, _ = self.data[field][z]["150"].shape
         
         self.n_tile = n_tile
         self.tile_size = self.n_grid//self.n_tile
@@ -83,18 +117,7 @@ class BAHAMASDataset:
 
         self.L = L
         self.tile_L = self.L/self.n_tile
-        
-        self.fields = list(self.data.keys())
-            
-        self.input_field = input_field
-        self.label_fields = [f for f in self.fields if f != self.input_field]
-        if label_fields is not None:
-            self.label_fields = label_fields
-            
-        self.redshifts = np.array(sorted(list(set([z for f in self.data.values() for z in f.keys()]))), ndmin=1)
-        if redshifts is not None:
-            self.redshifts = np.array(redshifts, ndmin=1)
-            
+                                
         self.transform = transform
         self.inverse_transform = inverse_transform
 

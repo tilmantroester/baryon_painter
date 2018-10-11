@@ -34,7 +34,18 @@ def download_file(service, file_id, file_name, file_size, download_path):
     with open(output_fn, "wb") as f:
         f.write(downloaded.read())
 
-def download_files_in_folder(folder_id, download_path):
+def download_files_in_folder(folder_id, download_path, exclude_filters=[]):
+    """Download all files in a folder.
+    
+    Arguments
+    ---------
+    folder_id : str
+        Google Drive ID for the folder whose content should be downloaded.
+    download_path : str
+        Path where the files should be written to.
+    exclude_filters : list, optional
+        List of strings that if found as a substring in a file name cause that file to be excluded from the download.
+    """
     drive_service = build('drive', 'v3')
 
     file_infos = get_folder_contents(drive_service, folder_id)
@@ -43,6 +54,9 @@ def download_files_in_folder(folder_id, download_path):
     
     print(f"Writing downloaded files to {download_path}")
     for file_info in file_infos:
+        for f in exclude_filters:
+            if f in file_info["name"]:
+                break
         download_file(drive_service, 
                       file_info["id"], file_info["name"], file_info["size"], 
                       download_path)
