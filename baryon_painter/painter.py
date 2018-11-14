@@ -274,7 +274,7 @@ class CVAEPainter(Painter):
 
 
 
-    def paint(self, input, input_transform=None, inverse_transform=None):
+    def paint(self, input, input_transform=None, inverse_transform=None, **kwargs):
         if input.shape != (1,*self.model.dim_y):
             raise ValueError(f"Shape mismatch between input and model: {input.shape} vs {self.model.dim_y}")
 
