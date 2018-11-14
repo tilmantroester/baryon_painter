@@ -104,16 +104,13 @@ class CVAEPainter(Painter):
         else:
             scheduler = None
         
-        if self.training_data.n_feature_per_field == 1:
-            stats_labels = [l.replace(f"{i}", f) for l in self.model.get_stats_labels() for i, f in enumerate(self.training_data.label_fields)]
-        else:
-            n_feature_per_field = self.training_data.n_feature_per_field
-            stats_labels = self.model.get_stats_labels()
-            for j, f in enumerate(self.training_data.label_fields):
-                for k in range(n_feature_per_field):
-                    for i, l in enumerate(stats_labels):
-                        stats_labels[i] = l.replace(f"{j*n_feature_per_field + k}", 
-                                                    f"{f}_{k}")
+        n_feature_per_field = self.training_data.n_feature_per_field
+        stats_labels = self.model.get_stats_labels()
+        for j, f in enumerate(self.training_data.label_fields):
+            for k in range(n_feature_per_field):
+                for i, l in enumerate(stats_labels):
+                    stats_labels[i] = l.replace(f"{j*n_feature_per_field + k}", 
+                                                f"{f}_{k}")
             
              
         if output_path is not None:
@@ -133,6 +130,7 @@ class CVAEPainter(Painter):
             model_checkpoint_template = None
             stats_filename = None
             
+        print(stats_labels)
         stats = TrainingStats(stats_labels, mavg_window_size, 
                               stats_filename=stats_filename)
    
@@ -307,19 +305,24 @@ class CVAEPainter(Painter):
 #                                for z in self.training_data.redshifts]
         
         d["model_architecture"] = self.architecture
-        d["model_state_dict"] = self.model.state_dict()
+#         d["model_state_dict"] = self.model.state_dict()
         
-        with open(filename, "wb") as f:
+        with open(filename[1], "wb") as f:
             dill.dump(d, f)
+        torch.save(self.model.state_dict(), filename[0])
             
             
     def load_state_from_file(self, filename, compute_device="cpu"):
-        with open(filename, "rb") as f:
-            d = dill.load(f)
-        
         self.compute_device = compute_device
+        
+        state_dict = torch.load(filename[0], map_location=torch.device(self.compute_device))
+        with open(filename[1], "rb") as f:
+            d = dill.load(f)
+            
         self.model = models.cvae.CVAE(d["model_architecture"], torch.device(self.compute_device))
-        self.model.load_state_dict(d["model_state_dict"])
+        self.model.load_state_dict(state_dict)
+        
+        self.architecture = d["model_architecture"]
         
         self.L = d["L"]
         self.tile_L = d["tile_L"]

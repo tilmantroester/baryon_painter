@@ -79,6 +79,7 @@ def plot_power_spectra(output_true, output_pred, input, L,
                        input_transform=[],
                        output_transforms=[],
                        n_k_bin=20, logspaced_k_bins=True,
+                       plot_mean_deviation=True,
                        n_feature_per_field=1):
     n_row = 2
     n_col = output_true.shape[1]//n_feature_per_field
@@ -92,6 +93,8 @@ def plot_power_spectra(output_true, output_pred, input, L,
     k_min = 2*pi/L
     k_max = 2*pi/L*output_true.shape[-1]/2
     
+    Pk_deviation = np.zeros((output_true.shape[0], n_col, n_k_bin))
+        
     for i in range(n_col):
         for j in range(output_true.shape[0]):
             A_true = output_transforms[j][i](output_true[j,i*n_feature_per_field:(i+1)*n_feature_per_field]).squeeze()
@@ -108,12 +111,16 @@ def plot_power_spectra(output_true, output_pred, input, L,
             Pk_true, k, Pk_var_true, n_mode = cosmotools.power_spectrum_tools.pseudo_Pofk(A_true, B_true, L, k_min=k_min, k_max=k_max, n_k_bin=n_k_bin, logspaced_k_bins=logspaced_k_bins)
             Pk_pred, k, Pk_var_pred, n_mode = cosmotools.power_spectrum_tools.pseudo_Pofk(A_pred, B_pred, L, k_min=k_min, k_max=k_max, n_k_bin=n_k_bin, logspaced_k_bins=logspaced_k_bins)
             
+            Pk_deviation[j,i] = Pk_pred/Pk_true-1
+            
             ax[0,i].loglog(k, k**2 * Pk_true, alpha=0.5, c="C0", label="")
             ax[0,i].loglog(k, k**2 * Pk_pred, alpha=0.5, c="C1", label="")
             
             ax[1,i].semilogx(k, Pk_pred/Pk_true-1, alpha=0.5, c="C0", label="")
             
-    
+        if plot_mean_deviation:
+            ax[1,i].semilogx(k, Pk_deviation.mean(axis=0)[i], alpha=1.0, linewidth=2, c="C0", label="")
+            
     for p in ax.flat:
         p.grid("off")
         
