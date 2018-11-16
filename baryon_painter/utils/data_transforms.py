@@ -2,16 +2,17 @@ import numpy as np
 
 from scipy.ndimage import gaussian_filter
 
-def transform_to_delta(x, field, z, **kwargs):
-    return x/kwargs["mean"]-1
-
-def inv_transform_to_delta(x, field, z, **kwargs):
-    return (x+1)*kwargs["mean"]
-
 from cosmotools.utils import rebin_2d
 
+def transform_to_delta(x, field, z, stats):
+    return x/stats[field][z]["mean"]-1
+
+def inv_transform_to_delta(x, field, z, stats):
+    return (x+1)*stats[field][z]["mean"]
+    
+
 def create_split_scale_transform(n_scale=3, step_size=4, include_original=True):    
-    def split_scale_transform(x, field, z, **kwargs):
+    def split_scale_transform(x, field, z, stats):
         in_shape = np.array(x.shape)
         d_in = x.copy()
         if include_original:
@@ -28,7 +29,7 @@ def create_split_scale_transform(n_scale=3, step_size=4, include_original=True):
         d_out[int(include_original)] = d_in
         return d_out
     
-    def inv_split_scale_transform(x, field, z, **kwargs):
+    def inv_split_scale_transform(x, field, z, stats):
         if include_original:
             if x.shape[0] != n_scale+1:
                 raise RuntimeError(f"Invalid shape of input. Expected x.shape[0] == {n_scale+1} but got {x.shape[0]}.")
@@ -41,32 +42,32 @@ def create_split_scale_transform(n_scale=3, step_size=4, include_original=True):
     return split_scale_transform, inv_split_scale_transform
 
 def chain_transformations(transformations):
-    def transform(x, field, z, **kwargs):
+    def transform(x, field, z, stats):
         for t in transformations:
-            x = t(x, field, z, **kwargs)
+            x = t(x, field, z, stats)
         return x
     return transform
     
 def create_range_compress_transforms(k_values):
-    def transform(x, field, z, **kwargs):
+    def transform(x, field, z, stats):
         k = k_values[field]
-        mean = kwargs["mean"]
-        std = np.sqrt(kwargs["var"])
+        mean = stats[field][z]["mean"]
+        std = np.sqrt(stats[field][z]["var"])
         return np.where(x > 0, np.tanh(np.log(x/std)/k), -1)
     
-    def inv_transform(x, field, z, **kwargs):
+    def inv_transform(x, field, z, stats):
         k = k_values[field]
-        mean = kwargs["mean"]
-        std = np.sqrt(kwargs["var"])
+        mean = stats[field][z]["mean"]
+        std = np.sqrt(stats[field][z]["var"])
         return np.where(x > -1, np.exp(np.arctanh(x)*k)*std, 0)
     
     return transform, inv_transform
 
-def atleast_3d(x, *args, **kwargs):
+def atleast_3d(x, *args, stats):
     if x.ndim == 2:
         return x.reshape(1, *x.shape)
     else:
         return x
 
-def squeeze(x, *args, **kwargs):
+def squeeze(x, *args, stats):
     return x.squeeze()

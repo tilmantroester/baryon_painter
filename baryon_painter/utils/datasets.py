@@ -3,6 +3,15 @@ import collections
 
 import numpy as np
 
+import copy
+
+def compile_transform(transform, stats={}, field=None, z=None):
+    func = copy.deepcopy(transform)
+    s = copy.deepcopy(stats)
+    f = copy.deepcopy(field)
+    z_ = copy.deepcopy(z)
+    return lambda x, field=f, z=z_: func(x, field, z, s)
+
 class BAHAMASDataset:
     """Dataset that deals with loading the BAHAMAS stacks.
     
@@ -28,13 +37,17 @@ class BAHAMASDataset:
         (default 4).
     transform : callable, optional
         Transform to be applied to the samples. The callable needs to have the 
-        signature ``f(x, field, z, **kwargs)``, where ``x`` is the data to be 
-        transformed, ``field`` the field of the data, and ``z`` the redshift. 
-        (default ``lambda x, field, z, **kwargs: x``).
+        signature ``f(x, field, z, stats)``, where ``x`` is the data to be 
+        transformed, ``field`` the field of the data, ``z`` the redshift, and
+        ``stats`` is a dict with statistics of the data set. 
+        (default ``lambda x, field, z, stats: x``).
     inverse_transform : callable, optional
         Inverse transform. The required signature is the same as for the 
         transform. 
-        (default ``lambda x, field, z, **kwargs: (field, z, kwargs["mean"], kwargs["var"])``).
+        (default ``lambda x, field, z, stats: x``).
+    scale_to_SLICS : bool, optional
+        Scale dark matter to match to SLICS delta-planes.
+        (default True).
     verbose : bool, optional
         Verbosity of the output (default False).
     """
@@ -43,9 +56,10 @@ class BAHAMASDataset:
                  input_field="dm", label_fields=[], 
                  n_tile=4,
                  L=400,
-                 transform=lambda x, field, z, **kwargs: x, 
-                 inverse_transform=lambda x, field, z, **kwargs: (field, z, kwargs["mean"], kwargs["var"]),
+                 transform=lambda x, field, z, stats: x, 
+                 inverse_transform=lambda x, field, z, stats: x,
                  n_feature_per_field=1,
+                 scale_to_SLICS=True,
                  verbose=False):
         self.data = {}
         
@@ -122,16 +136,24 @@ class BAHAMASDataset:
         self.inverse_transform = inverse_transform
 
         self.n_feature_per_field = n_feature_per_field
-        
-    def create_transform(self, field, z, **stats):
+
+        self.stats = collections.OrderedDict()
+        for field in self.fields:
+            self.stats[field] = collections.OrderedDict()
+            for z in self.redshifts:
+                self.stats[field][z] = self.get_stack_stats(field, z)
+
+        self.scale_to_SLICS = scale_to_SLICS
+
+    def create_transform(self, field, z):
         """Creates a callable for the transform of the form f(x)."""
 
-        return lambda x: self.transform(x, field, z, **stats)
+        return compile_transform(self.transform, self.stats, field, z)
     
-    def create_inverse_transform(self, field, z, **stats):
+    def create_inverse_transform(self, field, z):
         """Creates a callable for the inverse transform of the form f(x)."""
 
-        return lambda x: self.inverse_transform(x, field, z, **stats)
+        return compile_transform(self.inverse_transform, self.stats, field, z)
         
     def get_transforms(self, idx=None, z=None):
         """Get the transforms for a stack.
@@ -158,8 +180,7 @@ class BAHAMASDataset:
 
         transforms = []
         for field in [self.input_field]+self.label_fields:
-            stats = self.get_stack_stats(field, z)
-            transforms.append(self.create_transform(field, z, **stats))
+            transforms.append(self.create_transform(field, z))
 
         return transforms
     
@@ -189,8 +210,7 @@ class BAHAMASDataset:
 
         inv_transforms = []
         for field in [self.input_field]+self.label_fields:
-            stats = self.get_stack_stats(field, z)
-            inv_transforms.append(self.create_inverse_transform(field, z, **stats))
+            inv_transforms.append(self.create_inverse_transform(field, z))
 
         return inv_transforms
 
@@ -210,6 +230,7 @@ class BAHAMASDataset:
             Dictionary with statistics of the stack. At this point only contains 
             the mean and variance of all stacks in the dataset.
         """
+        
         mean_100 = self.data[field][z]["mean_100"]
         mean_150 = self.data[field][z]["mean_150"]
         var_100 = self.data[field][z]["var_100"]
@@ -235,9 +256,6 @@ class BAHAMASDataset:
         -------
         stack : 2d numpy.array
             250 Mpc/h equivalent stack.
-        stats : dict
-            Dictionary with statistics of the stack. At this point only contains 
-            the mean and variance of all stacks in the dataset.
         """
 
         flat_idx = flat_idx%self.n_sample
@@ -251,10 +269,8 @@ class BAHAMASDataset:
         tile_idx_150 = slice(idx[4]*self.tile_size, (idx[4]+1)*self.tile_size), slice(idx[5]*self.tile_size, (idx[5]+1)*self.tile_size)
         d_100 = self.data[field][z]["100"][slice_idx_100][tile_idx_100]
         d_150 = self.data[field][z]["150"][slice_idx_150][tile_idx_150]
-        
-        stats = self.get_stack_stats(field, z)
-        
-        return d_100+d_150, stats
+                
+        return d_100+d_150
     
     def sample_idx_to_redshift(self, idx):
         """Converts an index into the corresponding redshift."""
@@ -282,10 +298,11 @@ class BAHAMASDataset:
 
         z = self.sample_idx_to_redshift(idx)
 
-        d_input, input_stats = self.get_stack(self.input_field, z, idx)
+        d_input = self.get_stack(self.input_field, z, idx)
+        if self.scale_to_SLICS:
+            d_input = 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)*(d_input-d_input.mean())
         if transform:
-            d_input = self.transform(d_input, self.input_field, z, **input_stats)
-
+            d_input = self.transform(d_input, self.input_field, z, self.stats)
         return d_input
 
     def get_label_sample(self, idx, transform=True):
@@ -309,10 +326,9 @@ class BAHAMASDataset:
         
         d_labels = []
         for label_field in self.label_fields:
-            d, stats = self.get_stack(label_field, z, idx)
+            d = self.get_stack(label_field, z, idx)
             if transform:
-                d = self.transform(d, label_field, z, **stats)
-            
+                d = self.transform(d, label_field, z, self.stats)
             d_labels.append(d)
             
         return d_labels

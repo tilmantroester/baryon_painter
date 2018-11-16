@@ -10,7 +10,8 @@ import torch
 import torch.utils.data
 
 from baryon_painter.utils import validation_plotting
-from baryon_painter import models
+import baryon_painter.models as models
+import baryon_painter.datasets as datasets
 
 class Painter:
     """Abstract base class for a baryon painter.
@@ -272,40 +273,41 @@ class CVAEPainter(Painter):
 
 
 
-    def paint(self, input, input_transform=None, inverse_transform=None, **kwargs):
-        if input.shape != (1,*self.model.dim_y):
-            raise ValueError(f"Shape mismatch between input and model: {input.shape} vs {self.model.dim_y}")
-
+    def paint(self, input, z=0.0):
         with torch.no_grad():
-            if input_transform is not None:
-                y = input_transform(input)
+            if self.transform is not None:
+                y = self.transform(input, field=self.input_field, z=z)
             else:
                 y = input
+            y = y.reshape(1, *y.shape)
+            if y.shape != (1,*self.model.dim_y):
+                raise ValueError(f"Shape mismatch between input and model: {input.shape} vs {self.model.dim_y}")
             y = torch.Tensor(y, device=self.compute_device)
             prediction = self.model.sample_P(y).cpu().numpy()
         
-        if inverse_transform is not None:
-            return inverse_transform(prediction)
+        if self.inverse_transform is not None:
+            return self.inverse_transform(prediction, field=self.label_fields, z=z)
         else:
             return prediction
 
 
     def save_state_to_file(self, filename, mode="model_state_dict+metadata"):
-        d = {"L"            : self.training_data.L,
-             "tile_L"       : self.training_data.tile_L,
-             "n_tile"       : self.training_data.n_tile,
-             "tile_size"    : self.training_data.tile_size,
-             "input_field"  : self.training_data.input_field,
-             "label_fields" : self.training_data.label_fields,
+        d = {"L"              : self.training_data.L,
+             "n_grid"         : self.training_data.n_grid,
+             "tile_L"         : self.training_data.tile_L,
+             "n_tile"         : self.training_data.n_tile,
+             "tile_size"      : self.training_data.tile_size,
+             "input_field"    : self.training_data.input_field,
+             "label_fields"   : self.training_data.label_fields,
+             "scale_to_SLICS" : self.training_data.scale_to_SLICS,
             }
         
-#         d["transforms"] = [{"z" : z, 
-#                            "transforms" : self.training_data.get_transforms(z=z),
-#                            "inverse_transforms" : self.training_data.get_inverse_transforms(z=z)}
-#                                for z in self.training_data.redshifts]
+        d["transform"] = datasets.compile_transform(transform=self.training_data.transform, 
+                                                    stats=self.training_data.stats)
+        d["inverse_transform"] = datasets.compile_transform(transform=self.training_data.inverse_transform, 
+                                                             stats=self.training_data.stats)
         
         d["model_architecture"] = self.architecture
-#         d["model_state_dict"] = self.model.state_dict()
         
         with open(filename[1], "wb") as f:
             dill.dump(d, f)
@@ -325,12 +327,15 @@ class CVAEPainter(Painter):
         self.architecture = d["model_architecture"]
         
         self.L = d["L"]
+        self.n_grid = d["n_grid"]
         self.tile_L = d["tile_L"]
         self.n_tile = d["n_tile"]
         self.tile_size = d["tile_size"]
         self.input_field = d["input_field"]
         self.label_fields = d["label_fields"]
-        self.transforms = d["transforms"] if "transforms" in d else None
+        self.scale_to_SLICS = d["scale_to_SLICS"]
+        self.transform = d["transform"] if "transform" in d else None
+        self.inverse_transform = d["inverse_transform"] if "inverse_transform" in d else None
 
 class TrainingStats:
     def __init__(self, loss_terms=[], moving_average_window=100, dump_to_file_frequency=10, stats_filename=None):
