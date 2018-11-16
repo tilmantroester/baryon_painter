@@ -63,6 +63,7 @@ class CVAEPainter(Painter):
                     checkpoint_frequency=1000, statistics_report_frequency=50, 
                     loss_plot_frequency=1000, mavg_window_size=20,
                     plot_sample_var=False,
+                    plot_power_spectra=["auto"],
                     show_plots=True,
                     output_path=None,
                     verbose=True,
@@ -180,7 +181,9 @@ class CVAEPainter(Painter):
                         self.model.beta_KL = KL_anneal_fn(i_pepoch)
                         
                     if i_pepoch in validation_pepochs:
-                        self.validate(validation_batch_size=validation_batch_size, plot_sample_var=plot_sample_var)
+                        self.validate(validation_batch_size=validation_batch_size, 
+                                      plot_sample_var=plot_sample_var,
+                                      plot_power_spectra=plot_power_spectra)
                         
                     if adaptive_batch_size is not None:
                         new_batch_size = adaptive_batch_size(i_pepoch)
@@ -228,7 +231,9 @@ class CVAEPainter(Painter):
                         if show_plots:
                             plt.show()
                         
-        self.validate(validation_batch_size=validation_batch_size, plot_sample_var=plot_sample_var)
+        self.validate(validation_batch_size=validation_batch_size, 
+                      plot_sample_var=plot_sample_var,
+                      plot_power_spectra=plot_power_spectra)
         checkpoint_base_filename = model_checkpoint_template.format(epoch=i_epoch, 
                                                                     batch=i_batch, 
                                                                     sample=n_processed_samples)
@@ -236,7 +241,7 @@ class CVAEPainter(Painter):
         return stats
 
     def validate(self, validation_batch_size=8,
-                       plot_samples=1, plot_sample_var=False, plot_power_spectra="auto", plot_histogram="log", show_plots=True):
+                       plot_samples=1, plot_sample_var=False, plot_power_spectra=["auto"], plot_histogram="log", show_plots=True):
         validation_dataloader = torch.utils.data.DataLoader(self.test_data, batch_size=validation_batch_size, shuffle=True)
 
         with torch.no_grad():
@@ -264,17 +269,18 @@ class CVAEPainter(Painter):
                     fig.show()
 
             if plot_power_spectra is not None:
-                fig, _ = validation_plotting.plot_power_spectra(output_true=x.cpu().numpy(), 
-                                                       input=y.cpu().numpy(), 
-                                                       output_pred=x_pred.cpu().numpy(),
-                                                       L=self.test_data.tile_L,
-                                                       output_labels=self.test_data.label_fields,
-                                                       mode=plot_power_spectra,
-                                                       input_transform=[t[0] for t in inverse_transforms],
-                                                       output_transforms=[t[1:] for t in inverse_transforms],
-                                                       n_feature_per_field=self.test_data.n_feature_per_field)
-                if show_plots:
-                    fig.show()
+                for mode in plot_power_spectra:
+                    fig, _ = validation_plotting.plot_power_spectra(output_true=x.cpu().numpy(), 
+                                                           input=y.cpu().numpy(), 
+                                                           output_pred=x_pred.cpu().numpy(),
+                                                           L=self.test_data.tile_L,
+                                                           output_labels=self.test_data.label_fields,
+                                                           mode=mode,
+                                                           input_transform=[t[0] for t in inverse_transforms],
+                                                           output_transforms=[t[1:] for t in inverse_transforms],
+                                                           n_feature_per_field=self.test_data.n_feature_per_field)
+                    if show_plots:
+                        fig.show()
 
 
 
