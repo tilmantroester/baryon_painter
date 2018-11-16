@@ -11,7 +11,7 @@ def inv_transform_to_delta(x, field, z, stats):
     return (x+1)*stats[field][z]["mean"]
     
 
-def create_split_scale_transform(n_scale=3, step_size=4, include_original=True):    
+def create_split_scale_transform(n_scale=3, step_size=4, include_original=True, truncate=3.0):    
     def split_scale_transform(x, field, z, stats):
         in_shape = np.array(x.shape)
         d_in = x.copy()
@@ -24,7 +24,7 @@ def create_split_scale_transform(n_scale=3, step_size=4, include_original=True):
             idx = i+1 if include_original else i
             # https://stackoverflow.com/a/32846903
             # d_out[i] = rebin_2d(d_in, in_shape//(step_size**i)).repeat(step_size**i, axis=0).repeat(step_size**i, axis=1)
-            d_out[idx] = gaussian_filter(d_in, sigma=step_size**i/2, truncate=3.0)
+            d_out[idx] = gaussian_filter(d_in, sigma=step_size**i/2, truncate=truncate)
             d_in -= d_out[idx]
         d_out[int(include_original)] = d_in
         return d_out
@@ -48,7 +48,7 @@ def chain_transformations(transformations):
         return x
     return transform
     
-def create_range_compress_transforms(k_values):
+def create_range_compress_transforms(k_values, modes="log"):
     def interpolate_z(stats, z):
         """Interpolate statisitcs dict to redshift z."""
         z_list = list(stats.keys())
@@ -65,21 +65,35 @@ def create_range_compress_transforms(k_values):
 
     def transform(x, field, z, stats):
         k = k_values[field]
+        mode = modes[field]
+        mean = np.sqrt(interpolate_z(stats[field], z)["mean"])
         std = np.sqrt(interpolate_z(stats[field], z)["var"])
-        return np.where(x > 0, np.tanh(np.log(x/std)/k), -1)
+        if mode.lower() == "log":
+            return np.where(x > 0, np.tanh(np.log(x/std)/k), -1)
+        elif mode.lower() == "x/(1+x)":
+            return np.where(x+mean*k>0, np.tanh(x/(x+mean*k)), -1)
+        else:
+             raise ValueError(f"Mode '{mode}' not supported.")               
     
     def inv_transform(x, field, z, stats):
         k = k_values[field]
+        mode = modes[field]
+        mean = np.sqrt(interpolate_z(stats[field], z)["mean"])
         std = np.sqrt(interpolate_z(stats[field], z)["var"])
-        return np.where(x > -1, np.exp(np.arctanh(x)*k)*std, 0)
+        if mode.lower() == "log":
+            return np.where(x > -1, np.exp(np.arctanh(x)*k)*std, 0)
+        elif mode.lower() == "x/(1+x)":
+            return np.where(x > -1, mean*k/(1/np.arctanh(x)-1), -mean*k)
+        else:
+             raise ValueError(f"Mode '{mode}' not supported.")   
     
-    return transform, inv_transform
+    return transform, inv_transform 
 
-def atleast_3d(x, *args, stats):
+def atleast_3d(x, field, z, stats):
     if x.ndim == 2:
         return x.reshape(1, *x.shape)
     else:
         return x
 
-def squeeze(x, *args, stats):
+def squeeze(x, field, z, stats):
     return x.squeeze()

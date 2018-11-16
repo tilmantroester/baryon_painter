@@ -11,7 +11,7 @@ import torch.utils.data
 
 from baryon_painter.utils import validation_plotting
 import baryon_painter.models as models
-import baryon_painter.datasets as datasets
+import baryon_painter.utils.datasets as datasets
 
 class Painter:
     """Abstract base class for a baryon painter.
@@ -26,7 +26,7 @@ class Painter:
     def load_state_from_file(self, filename):
         raise NotImplementedError("This is an abstract base class.")
 
-    def paint(self, input):
+    def paint(self, input, **kwargs):
         raise NotImplementedError("This is an abstract base class.")
 
 
@@ -131,7 +131,6 @@ class CVAEPainter(Painter):
             model_checkpoint_template = None
             stats_filename = None
             
-        print(stats_labels)
         stats = TrainingStats(stats_labels, mavg_window_size, 
                               stats_filename=stats_filename)
    
@@ -207,7 +206,10 @@ class CVAEPainter(Painter):
 
                     if n_processed_samples - checkpoint_frequency >= last_checkpoint_dump and model_checkpoint_template is not None:
                         last_checkpoint_dump = n_processed_samples
-                        self.save_state_to_file(model_checkpoint_template.format(epoch=i_epoch, batch=i_batch, sample=n_processed_samples))
+                        checkpoint_base_filename = model_checkpoint_template.format(epoch=i_epoch, 
+                                                                                    batch=i_batch, 
+                                                                                    sample=n_processed_samples)
+                        self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))
                         
                     if n_processed_samples - statistics_report_frequency >= last_stat_dump and statistics_report_frequency > 0:
                         last_stat_dump = n_processed_samples
@@ -227,7 +229,10 @@ class CVAEPainter(Painter):
                             plt.show()
                         
         self.validate(validation_batch_size=validation_batch_size, plot_sample_var=plot_sample_var)
-                                                                            
+        checkpoint_base_filename = model_checkpoint_template.format(epoch=i_epoch, 
+                                                                    batch=i_batch, 
+                                                                    sample=n_processed_samples)
+        self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))                                                    
         return stats
 
     def validate(self, validation_batch_size=8,
@@ -273,7 +278,7 @@ class CVAEPainter(Painter):
 
 
 
-    def paint(self, input, z=0.0):
+    def paint(self, input, z=0.0, inverse_transform=True):
         with torch.no_grad():
             if self.transform is not None:
                 y = self.transform(input, field=self.input_field, z=z)
@@ -285,13 +290,18 @@ class CVAEPainter(Painter):
             y = torch.Tensor(y, device=self.compute_device)
             prediction = self.model.sample_P(y).cpu().numpy()
         
-        if self.inverse_transform is not None:
-            return self.inverse_transform(prediction, field=self.label_fields, z=z)
+        if inverse_transform and self.inverse_transform is not None:
+            if len(self.label_fields) > 1:
+                raise NotImplementedError("Painting with more than one output field is not supported yet.")
+            return self.inverse_transform(prediction, field=self.label_fields[0], z=z)
         else:
             return prediction
 
 
     def save_state_to_file(self, filename, mode="model_state_dict+metadata"):
+        if not isinstance(filename, (tuple, list)):
+            raise ValueError("filename needs to be a tuple of (state_filename, meta_filename).")
+            
         d = {"L"              : self.training_data.L,
              "n_grid"         : self.training_data.n_grid,
              "tile_L"         : self.training_data.tile_L,
@@ -302,9 +312,9 @@ class CVAEPainter(Painter):
              "scale_to_SLICS" : self.training_data.scale_to_SLICS,
             }
         
-        d["transform"] = datasets.compile_transform(transform=self.training_data.transform, 
+        d["transform"] = datasets.compile_transform(transform=self.training_data.transform_func, 
                                                     stats=self.training_data.stats)
-        d["inverse_transform"] = datasets.compile_transform(transform=self.training_data.inverse_transform, 
+        d["inverse_transform"] = datasets.compile_transform(transform=self.training_data.inverse_transform_func, 
                                                              stats=self.training_data.stats)
         
         d["model_architecture"] = self.architecture
@@ -315,6 +325,9 @@ class CVAEPainter(Painter):
             
             
     def load_state_from_file(self, filename, compute_device="cpu"):
+        if not isinstance(filename, (tuple, list)):
+            raise ValueError("filename needs to be a tuple of (state_filename, meta_filename).")
+            
         self.compute_device = compute_device
         
         state_dict = torch.load(filename[0], map_location=torch.device(self.compute_device))

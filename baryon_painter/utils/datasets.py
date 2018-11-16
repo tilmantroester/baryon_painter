@@ -132,28 +132,33 @@ class BAHAMASDataset:
         self.L = L
         self.tile_L = self.L/self.n_tile
                                 
-        self.transform = transform
-        self.inverse_transform = inverse_transform
+        self.transform_func = transform
+        self.inverse_transform_func = inverse_transform
 
         self.n_feature_per_field = n_feature_per_field
-
+        
+        self.scale_to_SLICS = scale_to_SLICS
+        
         self.stats = collections.OrderedDict()
         for field in self.fields:
             self.stats[field] = collections.OrderedDict()
             for z in self.redshifts:
                 self.stats[field][z] = self.get_stack_stats(field, z)
+                
+        self.transform = compile_transform(transform, self.stats)
+        self.inverse_transform = compile_transform(inverse_transform, self.stats)
 
-        self.scale_to_SLICS = scale_to_SLICS
+        
 
     def create_transform(self, field, z):
         """Creates a callable for the transform of the form f(x)."""
 
-        return compile_transform(self.transform, self.stats, field, z)
+        return compile_transform(self.transform_func, self.stats, field, z)
     
     def create_inverse_transform(self, field, z):
         """Creates a callable for the inverse transform of the form f(x)."""
 
-        return compile_transform(self.inverse_transform, self.stats, field, z)
+        return compile_transform(self.inverse_transform_func, self.stats, field, z)
         
     def get_transforms(self, idx=None, z=None):
         """Get the transforms for a stack.
@@ -238,6 +243,10 @@ class BAHAMASDataset:
         
         stats = {"mean" : mean_100+mean_150,
                  "var"  : var_100+var_150}
+        
+        if field == self.input_field and self.scale_to_SLICS:
+            stats["mean"] *= 1/(self.n_grid/8*5)
+            stats["var"] *= 1/(self.n_grid/8*5)
         return stats
 
     def get_stack(self, field, z, flat_idx):
@@ -302,7 +311,7 @@ class BAHAMASDataset:
         if self.scale_to_SLICS:
             d_input = 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)*(d_input-d_input.mean())
         if transform:
-            d_input = self.transform(d_input, self.input_field, z, self.stats)
+            d_input = self.transform(d_input, self.input_field, z)
         return d_input
 
     def get_label_sample(self, idx, transform=True):
@@ -328,7 +337,7 @@ class BAHAMASDataset:
         for label_field in self.label_fields:
             d = self.get_stack(label_field, z, idx)
             if transform:
-                d = self.transform(d, label_field, z, self.stats)
+                d = self.transform(d, label_field, z)
             d_labels.append(d)
             
         return d_labels
