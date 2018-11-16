@@ -49,16 +49,28 @@ def chain_transformations(transformations):
     return transform
     
 def create_range_compress_transforms(k_values):
+    def interpolate_z(stats, z):
+        """Interpolate statisitcs dict to redshift z."""
+        z_list = list(stats.keys())
+        idx = np.searchsorted(z_list, z, side="right")
+        if idx >= len(z_list):
+            return stats[z_list[-1]]
+        elif idx <= 0:
+            return stats[z_list[0]]
+        w = (z - z_list[idx-1])/(z_list[idx]-z_list[idx-1])
+        stats_names = stats[z_list[0]].keys()
+        intp_stats = {s : w*stats[z_list[idx]][s] + (1-w)*stats[z_list[idx-1]][s] for s in stats_names}
+
+        return intp_stats
+
     def transform(x, field, z, stats):
         k = k_values[field]
-        mean = stats[field][z]["mean"]
-        std = np.sqrt(stats[field][z]["var"])
+        std = np.sqrt(interpolate_z(stats[field], z)["var"])
         return np.where(x > 0, np.tanh(np.log(x/std)/k), -1)
     
     def inv_transform(x, field, z, stats):
         k = k_values[field]
-        mean = stats[field][z]["mean"]
-        std = np.sqrt(stats[field][z]["var"])
+        std = np.sqrt(interpolate_z(stats[field], z)["var"])
         return np.where(x > -1, np.exp(np.arctanh(x)*k)*std, 0)
     
     return transform, inv_transform
