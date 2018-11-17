@@ -60,6 +60,7 @@ class BAHAMASDataset:
                  inverse_transform=lambda x, field, z, stats: x,
                  n_feature_per_field=1,
                  scale_to_SLICS=True,
+                 mmap_mode="r",
                  verbose=False):
         self.data = {}
         
@@ -114,8 +115,8 @@ class BAHAMASDataset:
                 fn100 = os.path.join(root_path, fn100)
                 fn150 = os.path.join(root_path, fn150)
 
-            self.data[field][z]["100"] = np.load(fn100, mmap_mode="r")
-            self.data[field][z]["150"] = np.load(fn150, mmap_mode="r")
+            self.data[field][z]["100"] = np.load(fn100, mmap_mode=mmap_mode)
+            self.data[field][z]["150"] = np.load(fn150, mmap_mode=mmap_mode)
 
             self.data[field][z]["mean_100"] = f["mean_100"]
             self.data[field][z]["mean_150"] = f["mean_150"]
