@@ -64,37 +64,46 @@ class BAHAMASDataset:
                  verbose=False):
         self.data = {}
         
-        self.fields = set()
-        self.redshifts = set()
+        self.fields = []
+        self.redshifts = []
         
         # Check which fields and redshifts are available
         for f in files:
             if isinstance(f, dict):
-                self.fields.add(f["field"])
-                self.redshifts.add(f["z"])
+                self.fields.append(f["field"])
+                self.redshifts.append(f["z"])
             else:
                 raise ValueError("files entry is not a dict.")
         
-        if label_fields != []:
-            # Select the intersection of the available fields and requested fields.
-            if self.fields.issuperset([input_field] + label_fields):
-                self.fields = self.fields.intersection([input_field] + label_fields)
-            else:
-                missing = set([input_field] + label_fields) - self.fields
-                raise ValueError(f"The requested fields are not in the file list: field(s) {missing} is missing.")
-        
+        # Get unique values for fields and redshifts while preserving the order
+        # they appeared at in `files`.
+        # Since Python 3.7, this can be done with just a dict but we're not that
+        # aggressive yet.
+        self.fields = list(collections.OrderedDict.fromkeys(self.fields))
+        self.redshifts = list(collections.OrderedDict.fromkeys(self.redshifts))
+
         self.input_field = input_field
-        self.label_fields = list(self.fields - set([self.input_field]))
+
+        if label_fields != []:
+            self.label_fields = label_fields
+            # Select the intersection of the available fields and requested fields.
+            if input_field in self.fields and all([f in self.fields for f in label_fields]):
+                self.fields = [input_field] + label_fields
+            else:
+                missing = set([input_field] + label_fields) - set(self.fields)
+                raise ValueError(f"The requested fields are not in the file list: field(s) {missing} is missing.")
+        else:
+            self.label_fields = [f for f in self.fields if f != self.input_field]
         
         if redshifts != []:
             # Select the intersection of the available redshifts and requested redshifts.
-            if self.redshifts.issuperset(redshifts):
-                self.redshifts = self.redshifts.intersection(redshifts)
+            if all([z in self.redshifts for f in redshifts]):
+                self.redshifts = redshifts
             else:
-                missing = set(redshifts) - self.redshifts
+                missing = set(redshifts) - set(self.redshifts)
                 raise ValueError(f"The requested redshifts are not in the file list: redshift(s) {missing} is missing.")
-
-        self.redshifts = np.array(sorted(list(self.redshifts)))
+        else:
+            self.redshifts = np.array(sorted(list(self.redshifts)))
               
         # Load the files now
         for f in files:
@@ -367,7 +376,7 @@ class BAHAMASDataset:
             Index of the requested sample. This can be used to access the
             inverse transforms.
         """
-        if not isinstance(idx, collections.Iterable):
+        if not isinstance(idx, collections.abc.Iterable):
             d_input = self.get_input_sample(idx)
             d_label = self.get_label_sample(idx)
             
