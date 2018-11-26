@@ -6,10 +6,10 @@ def test_split_scale_transform():
     n = 256
     m = np.random.randn(n,n)
 
-    split_scale_transform = create_split_scale_transform(n_scale=3, step_size=2,
-                                                         include_original=True)
+    split_scale_transform, _ = create_split_scale_transform(n_scale=3, step_size=2,
+                                                            include_original=True)
 
-    t = split_scale_transform(m, None, None)
+    t = split_scale_transform(m, None, None, {})
 
     assert np.allclose(m, t[0])
     assert np.allclose(m, t[1:].sum(axis=0))
