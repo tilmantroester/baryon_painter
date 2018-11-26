@@ -73,6 +73,7 @@ def test_transforms():
         assert np.allclose(inv_transform[i+1](d[i+1]) - dataset.get_label_sample(sample_idx, transform=False)[i], 0, atol=abs_tol[i+1], rtol=0, equal_nan=True)
 
     # Relative accuracy isn't good. Might be due to values close to 0.
+    
     # assert np.allclose(inv_transform[0](d[0]), dataset.get_input_sample(sample_idx, transform=False), equal_nan=True)
     # for i, field in enumerate(dataset.label_fields):
     #     assert np.allclose(inv_transform[i+1](d[i+1]), dataset.get_label_sample(sample_idx, transform=False)[i], equal_nan=True)

@@ -76,8 +76,8 @@ def plot_samples(output_true, output_pred, input, output_pred_var=None,
 def plot_power_spectra(output_true, output_pred, input, L,
                        mode="auto", 
                        output_labels=[], plot_size=(4,2), 
-                       input_transform=[],
-                       output_transforms=[],
+                       input_transform=None,
+                       output_transforms=None,
                        n_k_bin=20, logspaced_k_bins=True,
                        plot_mean_deviation=True,
                        n_feature_per_field=1):
@@ -88,7 +88,7 @@ def plot_power_spectra(output_true, output_pred, input, L,
     if n_col == 1:
         ax = np.atleast_2d(ax).T
         
-    fig.subplots_adjust(hspace=0, wspace=0.3)
+    fig.subplots_adjust(left=0.2, hspace=0, wspace=0.3)
     
     k_min = 2*pi/L
     k_max = 2*pi/L*output_true.shape[-1]/2
@@ -97,14 +97,23 @@ def plot_power_spectra(output_true, output_pred, input, L,
         
     for i in range(n_col):
         for j in range(output_true.shape[0]):
-            A_true = output_transforms[j][i](output_true[j,i*n_feature_per_field:(i+1)*n_feature_per_field]).squeeze()
-            A_pred = output_transforms[j][i](output_pred[j,i*n_feature_per_field:(i+1)*n_feature_per_field]).squeeze()
+            if output_transforms is None:
+                out_transform = lambda x: x
+            else:
+                out_transform = output_transforms[j][i]
+            if input_transform is None:
+                in_transform = lambda x: x
+            else:
+                in_transform = input_transform[j]
+
+            A_true = out_transform(output_true[j,i*n_feature_per_field:(i+1)*n_feature_per_field]).squeeze()
+            A_pred = out_transform(output_pred[j,i*n_feature_per_field:(i+1)*n_feature_per_field]).squeeze()
             if mode.lower() == "auto":
                 B_true = A_true
                 B_pred = A_pred
             elif mode.lower() == "cross":
-                B_true = input_transform[j](input[j,:n_feature_per_field]).squeeze()
-                B_pred = input_transform[j](input[j,:n_feature_per_field]).squeeze()
+                B_true = in_transform(input[j,:n_feature_per_field]).squeeze()
+                B_pred = in_transform(input[j,:n_feature_per_field]).squeeze()
             else:
                 raise ValueError("Invalid mode: {}.".format(mode))
                 
@@ -113,10 +122,10 @@ def plot_power_spectra(output_true, output_pred, input, L,
             
             Pk_deviation[j,i] = Pk_pred/Pk_true-1
             
-            ax[0,i].loglog(k, k**2 * Pk_true, alpha=0.5, c="C0", label="")
-            ax[0,i].loglog(k, k**2 * Pk_pred, alpha=0.5, c="C1", label="")
+            ax[0,i].loglog(k, k**2 * Pk_true, alpha=0.2, c="C0", label="")
+            ax[0,i].loglog(k, k**2 * Pk_pred, alpha=0.2, c="C1", label="")
             
-            ax[1,i].semilogx(k, Pk_pred/Pk_true-1, alpha=0.5, c="C0", label="")
+            ax[1,i].semilogx(k, Pk_pred/Pk_true-1, alpha=0.2, c="C0", label="")
             
         if plot_mean_deviation:
             ax[1,i].semilogx(k, Pk_deviation.mean(axis=0)[i], alpha=1.0, linewidth=2, c="C0", label="")
@@ -133,13 +142,13 @@ def plot_power_spectra(output_true, output_pred, input, L,
         p.set_ylabel(r"$k^2 P(k)$")
         p.plot([], [], alpha=0.5, c="C0", label="Truth")
         p.plot([], [], alpha=0.5, c="C1", label="Predicted")
-        p.legend()
+        p.legend(frameon=False)
         
     for p in ax[1]:
         p.set_ylim(-0.5, 0.5)
         p.axhline(0)
         p.set_ylabel("Fractional\ndifference")
-        p.set_xlabel(r"k [Mpc$^{-1}$ h]")
+        p.set_xlabel(r"$k$ [Mpc$^{-1}$ h]")
         
     if mode.lower() == "auto":
         fig.suptitle("Auto power spectrum")
