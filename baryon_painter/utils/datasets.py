@@ -97,7 +97,7 @@ class BAHAMASDataset:
         
         if redshifts != []:
             # Select the intersection of the available redshifts and requested redshifts.
-            if all([z in self.redshifts for f in redshifts]):
+            if all([z in self.redshifts for z in redshifts]):
                 self.redshifts = redshifts
             else:
                 missing = set(redshifts) - set(self.redshifts)

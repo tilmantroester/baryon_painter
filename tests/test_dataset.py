@@ -7,10 +7,10 @@ from baryon_painter.utils.datasets import BAHAMASDataset
 def test_dataset():
     """Tests that the BAHAMASDataset can be created and produce samples."""
 
-    with open("data/training_data/BAHAMAS/stacks_uncompressed/train_files_info.pickle", "rb") as f:
-        training_files_info = pickle.load(f)
+    with open("data/training_data/BAHAMAS/stacks_uncompressed/test_files_info.pickle", "rb") as f:
+        test_files_info = pickle.load(f)
 
-    dataset = BAHAMASDataset(training_files_info, 
+    dataset = BAHAMASDataset(test_files_info, 
                              root_path="data/training_data/BAHAMAS/stacks_uncompressed/")
 
     d, idx = dataset[124]
@@ -19,11 +19,21 @@ def test_dataset():
     assert isinstance(idx, int)
     assert isinstance(d[0], np.ndarray)
 
+    dataset = BAHAMASDataset(test_files_info, 
+                             root_path="data/training_data/BAHAMAS/stacks_uncompressed/",
+                             label_fields=["pressure", "gas"],
+                             input_field="dm",
+                             redshifts=[0.0, 1.0])
+
+    assert dataset.label_fields == ["pressure", "gas"]
+    assert dataset.redshifts == [0.0, 1.0]
+    assert dataset.fields == ["dm", "pressure", "gas"]
+
 def test_transforms():
     """Tests transform with a simple transform to and from density contrast."""
 
     with open("data/training_data/BAHAMAS/stacks_uncompressed/test_files_info.pickle", "rb") as f:
-        training_files_info = pickle.load(f)
+        test_files_info = pickle.load(f)
 
     def transform_to_delta(x, field, z, stats):
         # print("transform mean: ", stats[field][z]["mean"])
@@ -34,7 +44,7 @@ def test_transforms():
 
         return (x+1.0)*stats[field][z]["mean"]#(x+1)*stats[field][z]["mean"]
 
-    dataset = BAHAMASDataset(training_files_info, 
+    dataset = BAHAMASDataset(test_files_info, 
                              root_path="data/training_data/BAHAMAS/stacks_uncompressed/",
                              transform=transform_to_delta,
                              inverse_transform=inv_transform_to_delta)
@@ -73,7 +83,7 @@ def test_transforms():
         assert np.allclose(inv_transform[i+1](d[i+1]) - dataset.get_label_sample(sample_idx, transform=False)[i], 0, atol=abs_tol[i+1], rtol=0, equal_nan=True)
 
     # Relative accuracy isn't good. Might be due to values close to 0.
-    
+
     # assert np.allclose(inv_transform[0](d[0]), dataset.get_input_sample(sample_idx, transform=False), equal_nan=True)
     # for i, field in enumerate(dataset.label_fields):
     #     assert np.allclose(inv_transform[i+1](d[i+1]), dataset.get_label_sample(sample_idx, transform=False)[i], equal_nan=True)
