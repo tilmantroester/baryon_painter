@@ -157,3 +157,26 @@ def plot_power_spectra(output_true, output_pred, input, L,
         
     plt.show()
     return fig, ax
+
+def plot_histogram(output_true, output_pred, labels=[], plot_size=(4,2), logscale=False):
+    n_col = output_true.shape[1]
+    
+    fig, ax = plt.subplots(1, n_col, sharex=True, figsize=(plot_size[0]*n_col, plot_size[1]))
+    if n_col == 1:
+        ax = np.atleast_1d(ax)
+        
+    for i in range(n_col):
+        ax[i].hist(output_true[:,i].flatten(), bins=50, density=True, alpha=0.5, facecolor="C0", label="Truth")
+        ax[i].hist(output_pred[:,i].flatten(), bins=50, density=True, alpha=0.5, facecolor="C1", label="Predicted")
+    
+    for p in ax:
+        p.grid("off")
+        p.legend()
+        if logscale:
+            p.set_yscale("log")
+        
+    if len(labels) >= n_col:
+        for i in range(n_col):
+            ax[i].set_title(labels[i])
+            
+    return fig, ax
