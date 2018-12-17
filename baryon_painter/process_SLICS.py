@@ -68,7 +68,10 @@ def generate_tiling(n_pixel_plane, n_pixel_tile, min_tile_overlap=0.5):
 def process_SLICS(painter, #transform, inverse_transform,
                   tile_size, n_pixel_tile, n_pixel_output,
                   LOS, z_SLICS, delta_size, delta_path, massplane_path, shifts_path,
-                  min_tiling_overlap=0.5, verbose=True):
+                  min_tiling_overlap=0.5, stats=None, verbose=True,
+                  regularise=False,
+                  regularise_std=5.0
+                  ):
     n_pixel_delta = 7745
     n_pixel_massplane = 4096*3
     massplane_size = 505 # Mpc/h
@@ -97,7 +100,8 @@ def process_SLICS(painter, #transform, inverse_transform,
             
             if verbose: print(f"  Painting on tile.")
             painted_tile = painter.paint(input=tile, 
-                                         z=z)
+                                         z=z,
+                                         stats=stats)
             
             painted_plane = get_tile(painted_tile, shift=((1-delta_size[i]/tile_size)/2, (1-delta_size[i]/tile_size)/2),
                                      tile_relative_size=delta_size[i]/tile_size)
@@ -118,6 +122,7 @@ def process_SLICS(painter, #transform, inverse_transform,
                 
             painted_plane = np.zeros((n_pixel_plane, n_pixel_plane))
             weight_plane = np.zeros((n_pixel_plane, n_pixel_plane))
+            problematic_tiles = []
             for j, x_shift in enumerate(tile_origins):
                 for k, y_shift in enumerate(tile_origins):
                     tile = get_tile(delta, shift=(x_shift, y_shift), 
@@ -125,13 +130,18 @@ def process_SLICS(painter, #transform, inverse_transform,
                     tile = scipy.ndimage.zoom(tile, zoom=n_pixel_tile/tile.shape[0], mode="reflect")
                     if verbose: print(f"    Painting on tile {j+1}-{k+1}")
                     painted_tile = painter.paint(input=tile, 
-                                                 z=z)
+                                                 z=z,
+                                                 stats=stats)
 
                     w = make_weight_map(tile.shape, falloff=0.05, sigma=0.5)
+                    if np.any(np.abs(painted_tile-painted_tile.mean()) > painted_tile.std()*regularise_std):
+                        problematic_tiles.append((z, tile, painted_tile))
+                    if regularise:
+                        w[np.abs(painted_tile-painted_tile.mean()) > painted_tile.std()*regularise_std] = 0
                     painted_plane[tile_slices[j][k]] += w*painted_tile
                     weight_plane[tile_slices[j][k]] += w
                     
             painted_planes.append(painted_plane/weight_plane)
             
                     
-    return painted_planes
+    return painted_planes, problematic_tiles
