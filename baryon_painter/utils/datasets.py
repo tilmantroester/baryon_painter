@@ -261,7 +261,7 @@ class BAHAMASDataset:
         
         if field == self.input_field and self.scale_to_SLICS:
             stats["mean"] *= 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)
-            stats["var"] *= 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)
+            stats["var"] *= (1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463))**2
         return stats
 
     def get_stack(self, field, z, flat_idx):

@@ -48,7 +48,7 @@ def chain_transformations(transformations):
         return x
     return transform
     
-def create_range_compress_transforms(k_values, modes={}, sqrt_of_mean=True):
+def create_range_compress_transforms(k_values, modes={}, eps=1e-3, sqrt_of_mean=False):
     def interpolate_z(stats, z):
         """Interpolate statisitcs dict to redshift z."""
         z_list = list(stats.keys())
@@ -70,11 +70,11 @@ def create_range_compress_transforms(k_values, modes={}, sqrt_of_mean=True):
         if sqrt_of_mean: mean = np.sqrt(mean)
         std = np.sqrt(interpolate_z(stats[field], z)["var"])
         if mode.lower() == "log":
-            return np.where(x > 0, np.tanh(np.log(x/std)/k), -1)
+            return np.where(x > 0, np.tanh(np.log(x/std+eps)/k), -1)
         elif mode.lower() == "x/(1+x)":
             return np.where(x+mean*k>0, np.tanh(x/(x+mean*k)), -1)
         elif mode.lower() == "1/x":
-            return np.where(x/(std*mean*k)>-1, np.tanh(2/(x/(std*mean*k)+1) - 1), -1)
+            return np.where(x/(std*mean*k)>-1, 2/(x/(std*mean*k)+1) - 1.001, -1)
         else:
              raise ValueError(f"Mode '{mode}' not supported.")               
     
@@ -85,11 +85,11 @@ def create_range_compress_transforms(k_values, modes={}, sqrt_of_mean=True):
         if sqrt_of_mean: mean = np.sqrt(mean)
         std = np.sqrt(interpolate_z(stats[field], z)["var"])
         if mode.lower() == "log":
-            return np.where(x > -1, np.exp(np.arctanh(x)*k)*std, 0)
+            return np.where(x > -1, (np.exp(np.arctanh(x)*k)-eps)*std, 0)
         elif mode.lower() == "x/(1+x)":
             return np.where(x > -1, mean*k/(1/np.arctanh(x)-1), -mean*k)
         elif mode.lower() == "1/x":
-            return np.where(x > -1 , (2/(np.arctanh(x)+1) - 1)*std*mean*k, 0)
+            return np.where(x >= -1 , (2/(x+1.001) - 1)*std*mean*k, 0)
         else:
              raise ValueError(f"Mode '{mode}' not supported.")   
     
