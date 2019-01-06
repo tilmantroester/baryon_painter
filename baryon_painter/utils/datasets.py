@@ -48,6 +48,9 @@ class BAHAMASDataset:
     scale_to_SLICS : bool, optional
         Scale dark matter to match to SLICS delta-planes.
         (default True).
+    subtract_minimum : bool, optional
+        Subtract minimum of dark matter field to match to SLICS density-planes.
+        (default True).
     verbose : bool, optional
         Verbosity of the output (default False).
     """
@@ -60,6 +63,7 @@ class BAHAMASDataset:
                  inverse_transform=lambda x, field, z, stats: x,
                  n_feature_per_field=1,
                  scale_to_SLICS=True,
+                 subtract_minimum=True,
                  mmap_mode="r",
                  verbose=False):
         self.data = {}
@@ -148,6 +152,7 @@ class BAHAMASDataset:
         self.n_feature_per_field = n_feature_per_field
         
         self.scale_to_SLICS = scale_to_SLICS
+        self.subtract_minimum = subtract_minimum
         
         self.stats = collections.OrderedDict()
         for field in self.fields:
@@ -320,6 +325,8 @@ class BAHAMASDataset:
         d_input = self.get_stack(self.input_field, z, idx)
         if self.scale_to_SLICS:
             d_input = 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)*(d_input-d_input.mean())
+        if self.subtract_minimum:
+            d_input -= d_input.min()
         if transform:
             d_input = self.transform(d_input, self.input_field, z)
         return d_input
