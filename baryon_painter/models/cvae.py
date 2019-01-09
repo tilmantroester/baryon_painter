@@ -153,6 +153,17 @@ def build_sequential(architecture):
     
     return torch.nn.Sequential(*modules)
 
+def merge_aux_label(y, aux_labels):
+    # Assume scalar labels and matching batch size
+    if aux_labels.dim() != 2:
+        raise ValueError("aux_labels needs to be 2D.")
+    if aux_labels.shape[0] != y.shape[0]:
+        raise ValueError("aux_labels batch size needs to match that of y")
+    # Expand aux_label to (N,C,H,W)
+    aux = aux_labels.reshape(*aux_labels.shape, 1, 1)
+    aux = aux.expand((*aux_labels.shape, *y.shape[-2:]))
+    return torch.cat((y, aux), dim=1)
+
 class CVAE(torch.nn.Module):
     def __init__(self, architecture, device="cpu"):
         super().__init__()
@@ -201,7 +212,7 @@ class CVAE(torch.nn.Module):
         if "cuda" in self.device.type:
             self.cuda()
         
-    def Q(self, x, y):
+    def Q(self, x, y, aux_label=None):
         h_x = self.q_x_in(x)
         h_y = self.q_y_in(y)
         h = torch.cat([h_x, h_y], dim=1)        
