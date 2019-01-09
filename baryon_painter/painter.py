@@ -194,8 +194,12 @@ class CVAEPainter(Painter):
 
                 x = torch.cat(batch_data[0][1:], dim=1).to(self.model.device)
                 y = batch_data[0][0].to(self.model.device)
-                
-                ELBO = self.model(x, y)
+                if len(batch_data) > 2:
+                    aux_label = batch_data[2].to(device=self.model.device, dtype=y.dtype)
+                else:
+                    aux_label = None
+                    
+                ELBO = self.model(x, y, aux_label)
                 
                 optimizer.zero_grad()
                 (-ELBO).backward()
@@ -248,10 +252,14 @@ class CVAEPainter(Painter):
             batch_data = next(validation_dataloader.__iter__())
             x = torch.cat(batch_data[0][1:], dim=1).to(self.model.device)
             y = batch_data[0][0].to(self.model.device)
-            if plot_sample_var:
-                x_pred, x_pred_var = self.model.sample_P(y, return_var=True)
+            if len(batch_data) > 2:
+                aux_label = batch_data[2].to(device=self.model.device, dtype=y.dtype)
             else:
-                x_pred = self.model.sample_P(y)
+                aux_label = None
+            if plot_sample_var:
+                x_pred, x_pred_var = self.model.sample_P(y, return_var=True, aux_label=aux_label)
+            else:
+                x_pred = self.model.sample_P(y, aux_label=aux_label)
                 
             indicies = batch_data[1].numpy()
             inverse_transforms = [self.test_data.get_inverse_transforms(idx) for idx in indicies]
@@ -293,8 +301,9 @@ class CVAEPainter(Painter):
             y = y.reshape(1, *y.shape)
             if y.shape != (1,*self.model.dim_y):
                 raise ValueError(f"Shape mismatch between input and model: {input.shape} vs {self.model.dim_y}")
-            y = torch.Tensor(y, device=self.compute_device)
-            prediction = self.model.sample_P(y).cpu().numpy()
+            y = torch.tensor(y, device=self.compute_device)
+            aux_label = torch.tensor(z, device=self.compute_device, dtype=y.dtype)
+            prediction = self.model.sample_P(y, aux_label=aux_label).cpu().numpy()
         
         if inverse_transform and self.inverse_transform is not None:
             if len(self.label_fields) > 1:

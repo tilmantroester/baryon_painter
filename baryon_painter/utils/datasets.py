@@ -387,7 +387,7 @@ class BAHAMASDataset:
             d_input = self.get_input_sample(idx)
             d_label = self.get_label_sample(idx)
             
-            return [d_input]+d_label, idx
+            return [d_input]+d_label, idx, self.sample_idx_to_redshift(idx)
         else:
             raise NotImplementedError("Only int indicies are supported for now.")
 

@@ -153,15 +153,15 @@ def build_sequential(architecture):
     
     return torch.nn.Sequential(*modules)
 
-def merge_aux_label(y, aux_labels):
+def merge_aux_label(y, aux_label):
     # Assume scalar labels and matching batch size
-    if aux_labels.dim() != 2:
-        raise ValueError("aux_labels needs to be 2D.")
-    if aux_labels.shape[0] != y.shape[0]:
-        raise ValueError("aux_labels batch size needs to match that of y")
+    if aux_label.dim() == 1:
+        aux_label = aux_label.reshape(-1,1)
+    if aux_label.shape[0] != y.shape[0]:
+        raise ValueError("aux_label batch size needs to match that of y")
     # Expand aux_label to (N,C,H,W)
-    aux = aux_labels.reshape(*aux_labels.shape, 1, 1)
-    aux = aux.expand((*aux_labels.shape, *y.shape[-2:]))
+    aux = aux_label.reshape(*aux_label.shape, 1, 1)
+    aux = aux.expand((*aux_label.shape, *y.shape[-2:]))
     return torch.cat((y, aux), dim=1)
 
 class CVAE(torch.nn.Module):
@@ -201,6 +201,7 @@ class CVAE(torch.nn.Module):
             else:
                 self.predict_var = False
                 self.p_var_out = None
+            self.use_aux_label = architecture["aux_label"]
         else:
             raise NotImplementedError("Architecture {} not supported yet!".format(architecture["type"]))
                 
@@ -213,6 +214,8 @@ class CVAE(torch.nn.Module):
             self.cuda()
         
     def Q(self, x, y, aux_label=None):
+        if aux_label is not None and self.use_aux_label:
+            y = merge_aux_label(y, aux_label)
         h_x = self.q_x_in(x)
         h_y = self.q_y_in(y)
         h = torch.cat([h_x, h_y], dim=1)        
@@ -226,7 +229,9 @@ class CVAE(torch.nn.Module):
         z = self.z_mu + eps * (torch.exp(self.z_log_var/2) + self.min_z_var)
         return z.view(-1, *self.dim_z)
     
-    def P(self, z, y, L=1):
+    def P(self, z, y, L=1, aux_label=None):
+        if aux_label is not None and self.use_aux_label:
+            y = merge_aux_label(y, aux_label)
         h_y = self.p_y_in(y)
         h_z = self.p_z_in(z)
         
@@ -243,13 +248,13 @@ class CVAE(torch.nn.Module):
         else:
             return x_mu,
         
-    def forward(self, x, y):
-        z = self.Q(x, y)
+    def forward(self, x, y, aux_label=None):
+        z = self.Q(x, y, aux_label)
         M = x.size(0)
         
         self.KL_term = 0.5/M * torch.sum(self.z_mu**2 + torch.exp(self.z_log_var) - (1 + self.z_log_var))
 
-        params = self.P(z, y, self.L)
+        params = self.P(z, y, self.L, aux_label)
         x_mu = params[0]
         self.x_mu = x_mu
         if self.predict_var: 
@@ -266,10 +271,10 @@ class CVAE(torch.nn.Module):
         self.ELBO = -self.KL_term*self.beta_KL + self.log_likelihood.sum()
         return self.ELBO
     
-    def sample_P(self, y, return_var=False):
+    def sample_P(self, y, return_var=False, aux_label=None):
         with torch.no_grad():
             z = torch.randn(size=(y.size(0), *self.dim_z), device=self.device)
-            p = self.P(z, y, L=1)
+            p = self.P(z, y, L=1, aux_label=aux_label)
             mu = p[0]
             if len(p) == 2:
                 var = torch.exp(p[1])
