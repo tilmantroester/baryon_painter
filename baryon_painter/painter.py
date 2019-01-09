@@ -64,6 +64,7 @@ class CVAEPainter(Painter):
                     loss_plot_frequency=1000, mavg_window_size=20,
                     plot_sample_var=False,
                     plot_power_spectra=["auto"],
+                    plot_histogram=["log"],
                     show_plots=True,
                     output_path=None,
                     verbose=True,
@@ -183,7 +184,8 @@ class CVAEPainter(Painter):
                     if i_pepoch in validation_pepochs:
                         self.validate(validation_batch_size=validation_batch_size, 
                                       plot_sample_var=plot_sample_var,
-                                      plot_power_spectra=plot_power_spectra)
+                                      plot_power_spectra=plot_power_spectra,
+                                      plot_histogram=plot_histogram)
                         
                     if adaptive_batch_size is not None:
                         new_batch_size = adaptive_batch_size(i_pepoch)
@@ -245,7 +247,13 @@ class CVAEPainter(Painter):
         return stats
 
     def validate(self, validation_batch_size=8,
-                       plot_samples=1, plot_sample_var=False, plot_power_spectra=["auto"], plot_histogram="log", show_plots=True):
+                       plot_samples=1, plot_sample_var=False, 
+                       plot_power_spectra=["auto"], 
+                       plot_histogram=["log"], histogram_n_sample=1,
+                       show_plots=True):
+        if show_plots:
+            import matplotlib.pyplot as plt
+            
         validation_dataloader = torch.utils.data.DataLoader(self.test_data, batch_size=validation_batch_size, shuffle=True)
 
         with torch.no_grad():
@@ -289,8 +297,20 @@ class CVAEPainter(Painter):
                                                            n_feature_per_field=self.test_data.n_feature_per_field)
                     if show_plots:
                         fig.show()
-
-
+            
+            if plot_histogram is not None:
+                for mode in plot_histogram:
+                    fig, ax = validation_plotting.plot_histogram(output_true=x.cpu().numpy(), 
+                                                                 output_pred=x_pred.cpu().numpy(),
+                                                                 n_sample=histogram_n_sample,
+                                                                 labels=self.test_data.label_fields,
+                                                                 logscale=mode=="log")
+                    if show_plots:
+                        fig.show()
+            if show_plots:
+                plt.show()
+            
+            
 
     def paint(self, input, z=0.0, inverse_transform=True):
         with torch.no_grad():

@@ -70,6 +70,10 @@ def create_range_compress_transforms(k_values, modes={}, eps=1e-3, sqrt_of_mean=
         if sqrt_of_mean: mean = np.sqrt(mean)
         std = np.sqrt(interpolate_z(stats[field], z)["var"])
         if mode.lower() == "log":
+            return np.where(x > 0, np.log(x/std+eps)/k, np.log(eps)/k)
+        elif mode.lower() == "shift-log":
+            return np.where(x >= 0, np.log(x/std+1)/k, 0)
+        elif mode.lower() == "log-tanh":
             return np.where(x > 0, np.tanh(np.log(x/std+eps)/k), -1)
         elif mode.lower() == "x/(1+x)":
             return np.where(x+mean*k>0, np.tanh(x/(x+mean*k)), -1)
@@ -85,6 +89,10 @@ def create_range_compress_transforms(k_values, modes={}, eps=1e-3, sqrt_of_mean=
         if sqrt_of_mean: mean = np.sqrt(mean)
         std = np.sqrt(interpolate_z(stats[field], z)["var"])
         if mode.lower() == "log":
+            return np.where(x > np.log(eps)/k, (np.exp(x*k)-eps)*std, 0)
+        elif mode.lower() == "shift-log":
+            return np.where(x >= 0, (np.exp(x*k)-1)*std, 0)
+        elif mode.lower() == "log-tanh":
             return np.where(x > -1, (np.exp(np.arctanh(x)*k)-eps)*std, 0)
         elif mode.lower() == "x/(1+x)":
             return np.where(x > -1, mean*k/(1/np.arctanh(x)-1), -mean*k)

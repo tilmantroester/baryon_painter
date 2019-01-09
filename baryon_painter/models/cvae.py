@@ -70,6 +70,8 @@ def conv_block(in_channel, out_channel, type="conv", scale=1, kernel=3, bias=Fal
         architecture += [("tanh",),]
     elif activation.lower() == "sigmoid":
         architecture += [("sigmoid",),]
+    elif activation.lower() == "softplus":
+        architecture += [("softplus",),]
     else:
         raise NotImplementedError("Activation {} not supported yet!".format(activation))
         
@@ -140,6 +142,8 @@ def build_sequential(architecture):
             modules.append(torch.nn.Tanh())
         elif name == "sigmoid":
             modules.append(torch.nn.Sigmoid())
+        elif name == "softplus":
+            modules.append(torch.nn.Softplus())
         elif name == "batchnorm":
             modules.append(torch.nn.BatchNorm2d(**config))
         elif name == "residual block":
