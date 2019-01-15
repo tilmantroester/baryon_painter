@@ -260,7 +260,7 @@ class BAHAMASDataset:
                  "var"  : var_100+var_150}
         
         if field == self.input_field and self.scale_to_SLICS:
-            stats["mean"] *= 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)
+            stats["mean"] = 0 #*= 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)
             stats["var"] *= (1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463))**2
         return stats
 
@@ -324,7 +324,7 @@ class BAHAMASDataset:
 
         d_input = self.get_stack(self.input_field, z, idx)
         if self.scale_to_SLICS:
-            d_input = 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)*(d_input-d_input.mean())
+            d_input = 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)*d_input - self.stats[self.input_field][z]["mean"]
         if self.subtract_minimum:
             d_input -= d_input.min()
         if transform:
