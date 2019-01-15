@@ -66,6 +66,7 @@ class CVAEPainter(Painter):
                     plot_power_spectra=["auto"],
                     plot_histogram=["log"],
                     show_plots=True,
+                    save_plots=False,
                     output_path=None,
                     verbose=True,
                     pepoch_size=3136,
@@ -119,19 +120,16 @@ class CVAEPainter(Painter):
         if output_path is not None:
             os.makedirs(output_path, exist_ok=True)
             
-            model_checkpoint_template = os.path.join(output_path, "checkpoint_sample{sample:010}_batch{batch}_epoch{epoch}")
-
-            sample_plot_template = os.path.join(output_path, "sample_epoch{}_batch{}_sample{}.png")
-            auto_power_plot_template = os.path.join(output_path, "auto_power_epoch{}_batch{}_sample{}.png")
-            cross_power_plot_template = os.path.join(output_path, "auto_power_epoch{}_batch{}_sample{}.png")
-            histogram_plot_template = os.path.join(output_path, "histogram_epoch{}_batch{}_sample{}.png")
-            log_histogram_plot_template = os.path.join(output_path, "log_histogram_epoch{}_batch{}_sample{}.png")
-            loss_plot_template = os.path.join(output_path, "loss_epoch{}_batch{}_sample{}.png")
-            
+            model_checkpoint_template = os.path.join(output_path, "checkpoint_sample{sample:0>10}_batch{batch}_epoch{epoch}")
+            validation_filename_template = os.path.join(output_path, "{{plot_type}}_epoch{epoch}_batch{batch}_sample{sample}.png")
             stats_filename = os.path.join(output_path, "stats.txt")
         else:
+            if save_plots:
+                raise ValueError("save_plots=True requires output_path to be set.")
             model_checkpoint_template = None
+            validation_filename_template = None
             stats_filename = None
+            
             
         stats = TrainingStats(stats_labels, mavg_window_size, 
                               stats_filename=stats_filename)
@@ -182,10 +180,16 @@ class CVAEPainter(Painter):
                         self.model.beta_KL = KL_anneal_fn(i_pepoch)
                         
                     if i_pepoch in validation_pepochs:
+                        if save_plots:
+                            validation_filename = validation_filename_template.format(epoch=i_epoch, batch=i_batch, sample=n_processed_samples)
                         self.validate(validation_batch_size=validation_batch_size, 
                                       plot_sample_var=plot_sample_var,
                                       plot_power_spectra=plot_power_spectra,
-                                      plot_histogram=plot_histogram)
+                                      plot_histogram=plot_histogram,
+                                      show_plots=show_plots,
+                                      save_plots=save_plots,
+                                      filename_template=validation_filename
+                                     )
                         
                     if adaptive_batch_size is not None:
                         new_batch_size = adaptive_batch_size(i_pepoch)
@@ -237,12 +241,20 @@ class CVAEPainter(Painter):
                         if show_plots:
                             plt.show()
                         
+        if save_plots:
+            validation_filename = validation_filename_template.format(epoch=i_epoch, batch=i_batch, sample=f"{n_processed_samples}_final")
         self.validate(validation_batch_size=validation_batch_size, 
                       plot_sample_var=plot_sample_var,
-                      plot_power_spectra=plot_power_spectra)
+                      plot_power_spectra=plot_power_spectra,
+                      plot_histogram=plot_histogram,
+                      show_plots=show_plots,
+                      save_plots=save_plots,
+                      filename_template=validation_filename
+                     )
+        
         checkpoint_base_filename = model_checkpoint_template.format(epoch=i_epoch, 
                                                                     batch=i_batch, 
-                                                                    sample=n_processed_samples)
+                                                                    sample=f"{n_processed_samples}_final")
         self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))                                                    
         return stats
 
@@ -250,9 +262,10 @@ class CVAEPainter(Painter):
                        plot_samples=1, plot_sample_var=False, 
                        plot_power_spectra=["auto"], 
                        plot_histogram=["log"], histogram_n_sample=1,
-                       show_plots=True):
-        if show_plots:
-            import matplotlib.pyplot as plt
+                       show_plots=True,
+                       save_plots=False,
+                       filename_template="{plot_type}.png"):
+        import matplotlib.pyplot as plt
             
         validation_dataloader = torch.utils.data.DataLoader(self.test_data, batch_size=validation_batch_size, shuffle=True)
 
@@ -275,7 +288,7 @@ class CVAEPainter(Painter):
                 fig, _ = validation_plotting.plot_samples(output_true=x.cpu().numpy(), 
                                                  input=y.cpu().numpy(), 
                                                  output_pred=x_pred.cpu().numpy(),
-                                                 output_pred_var=x_pred_var if plot_sample_var else None,
+                                                 output_pred_var=x_pred_var.cpu().numpy() if plot_sample_var else None,
                                                  n_sample=plot_samples,
                                                  input_label=self.test_data.input_field,
                                                  output_labels=self.test_data.label_fields,
@@ -283,6 +296,8 @@ class CVAEPainter(Painter):
                                                  tile_size=2.5)
                 if show_plots:
                     fig.show()
+                if save_plots:
+                    fig.savefig(filename_template.format(plot_type="sample"))
 
             if plot_power_spectra is not None:
                 for mode in plot_power_spectra:
@@ -297,6 +312,8 @@ class CVAEPainter(Painter):
                                                            n_feature_per_field=self.test_data.n_feature_per_field)
                     if show_plots:
                         fig.show()
+                    if save_plots:
+                        fig.savefig(filename_template.format(plot_type=f"{mode}_power_spectrum"))
             
             if plot_histogram is not None:
                 for mode in plot_histogram:
@@ -307,8 +324,12 @@ class CVAEPainter(Painter):
                                                                  logscale=mode=="log")
                     if show_plots:
                         fig.show()
+                    if save_plots:
+                        fig.savefig(filename_template.format(plot_type=f"{mode}_histogram"))
+                    
             if show_plots:
                 plt.show()
+            plt.close("all")
             
             
 
@@ -436,28 +457,44 @@ class TrainingStats:
                 items_per_row = 0
         return s
 
-    def plot_loss(self, loss_term="ELBO", window_size=100):
+    def plot_loss(self, loss_term="ELBO", window_size=200, burn_in=100):
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(1, 2, figsize=(8, 3))
+        fig.subplots_adjust(wspace=0.3)
         
         n = self.n_batches
-        if n > 500:
-            total_loss = self.loss_terms[loss_term]["all"][::n//500]
-            total_loss_mavg = self.loss_terms[loss_term]["mavg"][::n//500]
-        else:
-            total_loss = self.loss_terms[loss_term]["all"]
-            total_loss_mavg = self.loss_terms[loss_term]["mavg"]
         
+        n_sample = self.n_processed_samples
+        total_loss = self.loss_terms[loss_term]["all"]
+        total_loss_mavg = self.loss_terms[loss_term]["mavg"]
         
-        ax[0].semilogy(np.linspace(1, n, len(total_loss)), np.abs(total_loss), alpha=0.5, label="{}".format(loss_term))
-        ax[0].semilogy(np.linspace(self.mavg_window, n, len(total_loss_mavg)), np.abs(total_loss_mavg), label="{} mavg".format(loss_term))
-        ax[0].legend()
-        
-        x_range = np.linspace(max(n-window_size,1), n, min(n, window_size))
-        ax[1].plot(x_range, total_loss[-min(n, window_size):], alpha=0.5, label="{}".format(loss_term))
-        ax[1].plot(x_range, total_loss_mavg[-min(n, window_size):], label="{} mavg".format(loss_term))
+        x_range = n_sample[max(0, n-window_size):]
+        ax[1].plot(x_range, total_loss[max(0, n-window_size):], alpha=0.5, label="{}".format(loss_term))
+        ax[1].plot(x_range, total_loss_mavg[max(0, n-window_size):], label="{} mavg".format(loss_term))
         ax[1].legend()
-        ax[1].set_ylim(min(total_loss[-min(n, window_size):]), max(total_loss[-min(n, window_size):]))
-    
+        ax[1].set_ylim(min(total_loss[max(0, n-window_size):]), max(total_loss[max(0, n-window_size):]))
+        ax[1].set_xlabel("Number of samples")
+        ax[1].set_ylabel(loss_term)
+
+        if n > burn_in:
+            n_sample = n_sample[burn_in:]
+            total_loss = total_loss[burn_in:]
+            total_loss_mavg = total_loss_mavg[burn_in:]
+        if len(total_loss) > 500:
+            step = len(total_loss)//500
+            n_sample = n_sample[::step]
+            total_loss = total_loss[::step]
+            total_loss_mavg = total_loss_mavg[::step]            
+        
+        ax[0].semilogy(n_sample, 
+                       np.abs(total_loss), 
+                       alpha=0.5, label="{}".format(loss_term))
+        ax[0].semilogy(n_sample, 
+                       np.abs(total_loss_mavg), 
+                       label="{} mavg".format(loss_term))
+        ax[0].legend()
+        ax[0].set_xlabel("Number of samples")
+        ax[0].set_ylabel(loss_term)
+
         return fig, ax
