@@ -63,7 +63,7 @@ class BAHAMASDataset:
                  inverse_transform=lambda x, field, z, stats: x,
                  n_feature_per_field=1,
                  scale_to_SLICS=True,
-                 subtract_minimum=True,
+                 subtract_minimum=False,
                  mmap_mode="r",
                  verbose=False):
         self.data = {}
@@ -382,6 +382,8 @@ class BAHAMASDataset:
         idx : int
             Index of the requested sample. This can be used to access the
             inverse transforms.
+        z : float
+            Redshift of the requested sample.
         """
         if not isinstance(idx, collections.abc.Iterable):
             d_input = self.get_input_sample(idx)
