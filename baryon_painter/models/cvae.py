@@ -262,15 +262,15 @@ class CVAE(torch.nn.Module):
         x_mu = params[0]
         self.x_mu = x_mu
         if self.predict_var: 
-            log_x_var = params[1]/math.log(self.dim_x[0]*self.dim_x[1]*self.dim_x[2]) * torch.log(self.min_x_var)
+            log_x_var = params[1]/math.log(self.dim_x[0]*self.dim_x[1]*self.dim_x[2]) * math.log(self.min_x_var)
             self.x_var = torch.exp(log_x_var)
-            self.log_likelihood_fixed_var = -0.5*math.log(2*pi) + (-0.5 * (x.repeat(self.L, 1, 1, 1) - x_mu)**2).sum(3).sum(2).sum(0)/(M*self.L)
-            self.log_likelihood_free_var = -0.5*math.log(2*pi) + (-0.5*log_x_var - 0.5*(x.repeat(self.L, 1, 1, 1) - x_mu)**2/self.x_var).sum(3).sum(2).sum(0)/(M*self.L)
+            self.log_likelihood_fixed_var = -0.5*math.log(2*pi) + (-0.5 * (x.repeat(self.L, 1, 1, 1) - x_mu)**2).sum(dim=[3,2,0])/(M*self.L)
+            self.log_likelihood_free_var = -0.5*math.log(2*pi) + (-0.5*log_x_var - 0.5*(x.repeat(self.L, 1, 1, 1) - x_mu)**2/self.x_var).sum(dim=[3,2,0])/(M*self.L)
             self.log_likelihood =    (1-self.alpha_var)*self.log_likelihood_fixed_var \
                                    + self.alpha_var*self.log_likelihood_free_var   
         else:
             # Fixed variance
-            self.log_likelihood = -0.5*math.log(2*pi) + 1/(M*self.L)*(-0.5 * (x.repeat(self.L, 1, 1, 1) - x_mu)**2).sum(3).sum(2).sum(0)
+            self.log_likelihood = -0.5*math.log(2*pi) + 1/(M*self.L)*(-0.5 * (x.repeat(self.L, 1, 1, 1) - x_mu)**2).sum(dim=[3,2,0])
 
         self.ELBO = -self.KL_term*self.beta_KL + self.log_likelihood.sum()
         return self.ELBO
