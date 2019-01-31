@@ -88,7 +88,7 @@ def plot_power_spectra(output_true, output_pred, input, L,
     if n_col == 1:
         ax = np.atleast_2d(ax).T
         
-    fig.subplots_adjust(left=0.2, hspace=0, wspace=0.3)
+    fig.subplots_adjust(left=0.2, bottom=0.15, hspace=0, wspace=0.3)
     
     k_min = 2*pi/L
     k_max = 2*pi/L*output_true.shape[-1]/2

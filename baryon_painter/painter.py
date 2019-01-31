@@ -120,8 +120,8 @@ class CVAEPainter(Painter):
         if output_path is not None:
             os.makedirs(output_path, exist_ok=True)
             
-            model_checkpoint_template = os.path.join(output_path, "checkpoint_sample{sample:0>10}_batch{batch}_epoch{epoch}")
-            validation_filename_template = os.path.join(output_path, "{{plot_type}}_epoch{epoch}_batch{batch}_sample{sample}.png")
+            model_checkpoint_template = os.path.join(output_path, "checkpoint_sample{sample:0>10}_batch{batch}_epoch{epoch}{suffix}")
+            validation_filename_template = os.path.join(output_path, "{{plot_type}}_epoch{epoch}_batch{batch}_sample{sample}{suffix}.png")
             stats_filename = os.path.join(output_path, "stats.txt")
         else:
             if save_plots:
@@ -181,7 +181,7 @@ class CVAEPainter(Painter):
                         
                     if i_pepoch in validation_pepochs:
                         if save_plots:
-                            validation_filename = validation_filename_template.format(epoch=i_epoch, batch=i_batch, sample=n_processed_samples)
+                            validation_filename = validation_filename_template.format(epoch=i_epoch, batch=i_batch, sample=n_processed_samples, suffix="")
                         self.validate(validation_batch_size=validation_batch_size, 
                                       plot_sample_var=plot_sample_var,
                                       plot_power_spectra=plot_power_spectra,
@@ -221,7 +221,8 @@ class CVAEPainter(Painter):
                         last_checkpoint_dump = n_processed_samples
                         checkpoint_base_filename = model_checkpoint_template.format(epoch=i_epoch, 
                                                                                     batch=i_batch, 
-                                                                                    sample=n_processed_samples)
+                                                                                    sample=n_processed_samples,
+                                                                                    suffix="")
                         self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))
                         
                     if n_processed_samples - statistics_report_frequency >= last_stat_dump and statistics_report_frequency > 0:
@@ -242,7 +243,7 @@ class CVAEPainter(Painter):
                             plt.show()
                         
         if save_plots:
-            validation_filename = validation_filename_template.format(epoch=i_epoch, batch=i_batch, sample=f"{n_processed_samples}_final")
+            validation_filename = validation_filename_template.format(epoch=i_epoch, batch=i_batch, sample=n_processed_samples, suffix="_final")
         self.validate(validation_batch_size=validation_batch_size, 
                       plot_sample_var=plot_sample_var,
                       plot_power_spectra=plot_power_spectra,
@@ -254,7 +255,8 @@ class CVAEPainter(Painter):
         
         checkpoint_base_filename = model_checkpoint_template.format(epoch=i_epoch, 
                                                                     batch=i_batch, 
-                                                                    sample=f"{n_processed_samples}_final")
+                                                                    sample=n_processed_samples,
+                                                                    suffix="_final")
         self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))                                                    
         return stats
 
