@@ -17,7 +17,9 @@ class BAHAMASDataset:
     
     Arguments
     ---------
-    files :list
+    data : dict, optional
+        Dictionary with the raw data and meta information. (default None).
+    files :list, optional
         List of dicts describing the data files. See below for a description of 
         the required entries.
     root_path :str, optional
@@ -35,6 +37,13 @@ class BAHAMASDataset:
     n_tile : int, optional
         Number of tiles per stack, where the total number of tiles is n_tile^2. 
         (default 4).
+    L : float, optional
+        Physical size of the stacks. (default 400).
+    n_stack : int, optional
+        Number of stacks to use. If ``None``, uses all stacks in the files.
+    stack_offset : int, optional
+        Offset in the stacks to use. To separate a validation set, set ``stack_offset``
+        to the ``n_stack`` used for the training set to avoid overlap. (default 0).
     transform : callable, optional
         Transform to be applied to the samples. The callable needs to have the 
         signature ``f(x, field, z, stats)``, where ``x`` is the data to be 
@@ -51,14 +60,18 @@ class BAHAMASDataset:
     subtract_minimum : bool, optional
         Subtract minimum of dark matter field to match to SLICS density-planes.
         (default True).
+    mmap_mode : string, optional
+        Memory map mode that is used to load the files. Gets passed to numpy.load.
+        (default ``"r"``).
     verbose : bool, optional
         Verbosity of the output (default False).
     """
-    def __init__(self, files, root_path=None,
+    def __init__(self, data=None, files=None, root_path=None,
                  redshifts=[],
                  input_field="dm", label_fields=[], 
                  n_tile=4,
                  L=400,
+                 n_stack=None, stack_offset=0,
                  transform=lambda x, field, z, stats: x, 
                  inverse_transform=lambda x, field, z, stats: x,
                  n_feature_per_field=1,
@@ -66,18 +79,26 @@ class BAHAMASDataset:
                  subtract_minimum=False,
                  mmap_mode="r",
                  verbose=False):
-        self.data = {}
         
         self.fields = []
         self.redshifts = []
         
-        # Check which fields and redshifts are available
-        for f in files:
-            if isinstance(f, dict):
-                self.fields.append(f["field"])
-                self.redshifts.append(f["z"])
-            else:
-                raise ValueError("files entry is not a dict.")
+        if data is not None:
+            # If data structure is provided, use that to avoid duplicating memory
+            self.data = data
+            self.fields = list(self.data.keys())
+            self.redshifts = list(self.data[self.fields[0]].keys())
+        elif files is not None:
+            # Check which fields and redshifts are available
+            self.data = {}
+            for f in files:
+                if isinstance(f, dict):
+                    self.fields.append(f["field"])
+                    self.redshifts.append(f["z"])
+                else:
+                    raise ValueError("files entry is not a dict.")
+        else:
+            raise ValueError("Either data or files need to be provided.")
         
         # Get unique values for fields and redshifts while preserving the order
         # they appeared at in `files`.
@@ -108,40 +129,52 @@ class BAHAMASDataset:
                 raise ValueError(f"The requested redshifts are not in the file list: redshift(s) {missing} is missing.")
         else:
             self.redshifts = np.array(sorted(list(self.redshifts)))
-              
-        # Load the files now
-        for f in files:
-            field = f["field"]
-            z = f["z"]
-            if field not in self.fields or z not in self.redshifts:
-                # Don't load fields that are not requested
-                continue
-                
-            if field not in self.data:
-                self.data[field] = {}
-            if z not in self.data[field]:
-                self.data[field][z] = {}
-                    
-            fn100 = f["file_100"]
-            fn150 = f["file_150"]
-            if root_path is not None:
-                fn100 = os.path.join(root_path, fn100)
-                fn150 = os.path.join(root_path, fn150)
+            
+        if files is not None:
+            # Load data from files
+            for f in files:
+                field = f["field"]
+                z = f["z"]
+                if field not in self.fields or z not in self.redshifts:
+                    # Don't load fields that are not requested
+                    continue
 
-            self.data[field][z]["100"] = np.load(fn100, mmap_mode=mmap_mode)
-            self.data[field][z]["150"] = np.load(fn150, mmap_mode=mmap_mode)
+                if field not in self.data:
+                    self.data[field] = {}
+                if z not in self.data[field]:
+                    self.data[field][z] = {}
 
-            self.data[field][z]["mean_100"] = f["mean_100"]
-            self.data[field][z]["mean_150"] = f["mean_150"]
-            self.data[field][z]["var_100"] = f["var_100"]
-            self.data[field][z]["var_150"] = f["var_150"]
+                fn100 = f["file_100"]
+                fn150 = f["file_150"]
+                if root_path is not None:
+                    fn100 = os.path.join(root_path, fn100)
+                    fn150 = os.path.join(root_path, fn150)
 
-            self.n_stack_100, self.n_grid, _ = self.data[field][z]["100"].shape
-            self.n_stack_150, _, _ = self.data[field][z]["150"].shape
+                self.data[field][z]["100"] = np.load(fn100, mmap_mode=mmap_mode)
+                self.data[field][z]["150"] = np.load(fn150, mmap_mode=mmap_mode)
+
+                self.data[field][z]["mean_100"] = f["mean_100"]
+                self.data[field][z]["mean_150"] = f["mean_150"]
+                self.data[field][z]["var_100"] = f["var_100"]
+                self.data[field][z]["var_150"] = f["var_150"]
+        
+
+        self.n_stack_100, self.n_grid, _ = self.data[self.fields[0]][self.redshifts[0]]["100"].shape
+        self.n_stack_150, _, _ = self.data[self.fields[0]][self.redshifts[0]]["150"].shape
+        
+        if n_stack is None:
+            self.n_stack = min(self.n_stack_100, self.n_stack_150)
+        else:
+            self.n_stack = n_stack
+        self.stack_offset = stack_offset
+        
+        if min(self.n_stack_100, self.n_stack_150) < self.stack_offset + self.n_stack:
+            raise ValueError(f"Highest stack exceeds number of available stacks.")
         
         self.n_tile = n_tile
         self.tile_size = self.n_grid//self.n_tile
-        self.n_sample = (self.n_stack_100*self.n_tile**2)*(self.n_stack_150*self.n_tile**2)
+        self.n_total_sample = (self.n_stack_100*self.n_tile**2)*(self.n_stack_150*self.n_tile**2)
+        self.n_sample = self.n_stack**2*self.n_tile**4
 
         self.L = L
         self.tile_L = self.L/self.n_tile
@@ -281,14 +314,16 @@ class BAHAMASDataset:
         stack : 2d numpy.array
             250 Mpc/h equivalent stack.
         """
-
+            
+        # Remove redshift offset
         flat_idx = flat_idx%self.n_sample
         
-        idx = np.unravel_index(flat_idx, dims=(self.n_stack_100, self.n_tile, self.n_tile, 
-                                               self.n_stack_150, self.n_tile, self.n_tile))
+#         print(f"Getting stack for field {field}, z {z}, idx {flat_idx}")
+        idx = np.unravel_index(flat_idx, dims=(self.n_stack, self.n_tile, self.n_tile, 
+                                               self.n_stack, self.n_tile, self.n_tile))
         
-        slice_idx_100 = idx[0]
-        slice_idx_150 = idx[3]
+        slice_idx_100 = idx[0] + self.stack_offset
+        slice_idx_150 = idx[3] + self.stack_offset
         tile_idx_100 = slice(idx[1]*self.tile_size, (idx[1]+1)*self.tile_size), slice(idx[2]*self.tile_size, (idx[2]+1)*self.tile_size)
         tile_idx_150 = slice(idx[4]*self.tile_size, (idx[4]+1)*self.tile_size), slice(idx[5]*self.tile_size, (idx[5]+1)*self.tile_size)
         d_100 = self.data[field][z]["100"][slice_idx_100][tile_idx_100]
@@ -359,11 +394,47 @@ class BAHAMASDataset:
             
         return d_labels
     
+    def get_batch(self, size=1, z=None):
+        """Get a batch from the data set by random sampling.
+        
+        Arguments
+        ---------
+        size : int, optional
+            Number of samples to return. (default 1).
+        z : float, optional
+            Redshift of the requested samples. If ``None`` samples from all redshifts. (default ``None``).
+            
+        Returns
+        -------
+        samples : numpy.array
+            Array of shape (N,1+F_label, C, H, W), where N is the size of the batch (``size``), F_label is the number label fields, C the number of features, and H,W is the size of the tile in pixel.
+        idx : numpy.array
+            Array with the indicies of the samples.
+        z : numpy.array
+            Array with the redshifts of the samples.
+        """
+        
+        idx = np.random.choice(self.n_sample, size=size, replace=False)
+        if z is None:
+            idx *= len(self.redshifts)
+            z = [self.sample_idx_to_redshift(i) for i in idx]
+        else:
+            idx_offset = self.redshifts.index(z)*self.n_sample
+            idx += idx_offset
+            z = [z]*size
+            
+        samples = []
+        for i in idx:
+            s, _, _ = self[i]
+            samples.append(s)
+        
+        return np.array(samples), idx, np.array(z)
+        
     def __len__(self):
         """Return total number of samples.
 
         The total number of samples is given by 
-        ``(n_stack_100*n_tile**2)*(n_stack_150*n_tile**2)*len(redshifts)``.
+        ``n_stack_100**2**n_tile**4*len(redshifts)``.
         """
         return self.n_sample*len(self.redshifts)
     
