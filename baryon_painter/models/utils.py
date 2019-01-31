@@ -172,7 +172,7 @@ def merge_aux_label(y, aux_label):
         Tensor of shape (N,C_y+C_aux,H,W).
     """
     # Assume scalar labels and matching batch size
-    if aux_label.dim() == 1:
+    if aux_label.dim() == 0 or aux_label.dim() == 1:
         aux_label = aux_label.reshape(-1,1)
     if aux_label.shape[0] != y.shape[0]:
         raise ValueError("aux_label batch size needs to match that of y")

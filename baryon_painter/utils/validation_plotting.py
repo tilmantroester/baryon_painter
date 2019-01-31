@@ -131,7 +131,7 @@ def plot_power_spectra(output_true, output_pred, input, L,
             ax[1,i].semilogx(k, Pk_deviation.mean(axis=0)[i], alpha=1.0, linewidth=2, c="C0", label="")
             
     for p in ax.flat:
-        p.grid("off")
+        p.grid(False)
         
     
     if len(output_labels) >= n_col:

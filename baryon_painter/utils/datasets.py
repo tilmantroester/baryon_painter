@@ -407,7 +407,7 @@ class BAHAMASDataset:
         Returns
         -------
         samples : numpy.array
-            Array of shape (N,1+F_label, C, H, W), where N is the size of the batch (``size``), F_label is the number label fields, C the number of features, and H,W is the size of the tile in pixel.
+            Array of shape (1+F_label, N, C, H, W), where N is the size of the batch (``size``), F_label is the number label fields, C the number of features, and H,W is the size of the tile in pixel.
         idx : numpy.array
             Array with the indicies of the samples.
         z : numpy.array
@@ -428,7 +428,7 @@ class BAHAMASDataset:
             s, _, _ = self[i]
             samples.append(s)
         
-        return np.array(samples), idx, np.array(z)
+        return np.array(samples).swapaxes(0,1), idx, np.array(z)
         
     def __len__(self):
         """Return total number of samples.

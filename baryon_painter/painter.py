@@ -257,7 +257,9 @@ class CVAEPainter(Painter):
                                                                     batch=i_batch, 
                                                                     sample=n_processed_samples,
                                                                     suffix="_final")
-        self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))                                                    
+        self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))
+        self.save_state_to_file((os.path.join(output_path, "model_state"), os.path.join(output_path, "model_meta")))
+
         return stats
 
     def validate(self, validation_batch_size=8,
@@ -268,11 +270,9 @@ class CVAEPainter(Painter):
                        save_plots=False,
                        filename_template="{plot_type}.png"):
         import matplotlib.pyplot as plt
-            
-        validation_dataloader = torch.utils.data.DataLoader(self.test_data, batch_size=validation_batch_size, shuffle=True)
-
+        
         with torch.no_grad():
-            batch_data = next(validation_dataloader.__iter__())
+            batch_data = self.test_data.get_batch(size=validation_batch_size)
             x = torch.cat(batch_data[0][1:], dim=1).to(self.model.device)
             y = batch_data[0][0].to(self.model.device)
             if len(batch_data) > 2:
