@@ -80,7 +80,8 @@ class CVAEPainter(Painter):
         if len(validation_pepochs) > 0 and self.test_data is None:
             raise RuntimeError("Trying to validate but no test data specified.")            
 
-
+        self.model.train(True)
+        
         if adaptive_batch_size is None and batch_size > 0:
             dataloader = torch.utils.data.DataLoader(self.training_data, batch_size=batch_size, shuffle=True)
         else:
@@ -263,6 +264,7 @@ class CVAEPainter(Painter):
         return stats
 
     def validate(self, validation_batch_size=8,
+                       validation_redshift=None,
                        plot_samples=1, plot_sample_var=False, 
                        plot_power_spectra=["auto"], 
                        plot_histogram=["log"], histogram_n_sample=1,
@@ -270,21 +272,18 @@ class CVAEPainter(Painter):
                        save_plots=False,
                        filename_template="{plot_type}.png"):
         import matplotlib.pyplot as plt
-        
+
         with torch.no_grad():
-            batch_data = self.test_data.get_batch(size=validation_batch_size)
-            x = torch.cat(batch_data[0][1:], dim=1).to(self.model.device)
-            y = batch_data[0][0].to(self.model.device)
-            if len(batch_data) > 2:
-                aux_label = batch_data[2].to(device=self.model.device, dtype=y.dtype)
-            else:
-                aux_label = None
+            fields, indicies, z = self.test_data.get_batch(size=validation_batch_size, z=validation_redshift)
+            x = torch.tensor(np.concatenate(fields[1:], axis=1), device=self.model.device)
+            y = torch.tensor(fields[0], device=self.model.device)
+            aux_label = torch.tensor(z, device=self.model.device, dtype=y.dtype)
+
             if plot_sample_var:
                 x_pred, x_pred_var = self.model.sample_P(y, return_var=True, aux_label=aux_label)
             else:
                 x_pred = self.model.sample_P(y, aux_label=aux_label)
                 
-            indicies = batch_data[1].numpy()
             inverse_transforms = [self.test_data.get_inverse_transforms(idx) for idx in indicies]
             if plot_samples > 0:
                 fig, _ = validation_plotting.plot_samples(output_true=x.cpu().numpy(), 
@@ -335,9 +334,10 @@ class CVAEPainter(Painter):
             
             
 
-    def paint(self, input, z=0.0, inverse_transform=True):
+    def paint(self, input, z=0.0, transform=True, inverse_transform=True):
+        self.model.train(False)
         with torch.no_grad():
-            if self.transform is not None:
+            if transform and self.transform is not None:
                 y = self.transform(input, field=self.input_field, z=z)
             else:
                 y = input
@@ -346,7 +346,8 @@ class CVAEPainter(Painter):
                 raise ValueError(f"Shape mismatch between input and model: {input.shape} vs {self.model.dim_y}")
             y = torch.tensor(y, device=self.compute_device)
             aux_label = torch.tensor(z, device=self.compute_device, dtype=y.dtype)
-            prediction = self.model.sample_P(y, aux_label=aux_label).cpu().numpy()
+            prediction = self.model.sample_P(y, aux_label=aux_label,
+                                             z=np.zeros((1,*self.model.dim_z))).cpu().numpy()
         
         if inverse_transform and self.inverse_transform is not None:
             if len(self.label_fields) > 1:

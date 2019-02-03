@@ -394,7 +394,7 @@ class BAHAMASDataset:
             
         return d_labels
     
-    def get_batch(self, size=1, z=None):
+    def get_batch(self, size=1, z=None, idx=None):
         """Get a batch from the data set by random sampling.
         
         Arguments
@@ -403,6 +403,8 @@ class BAHAMASDataset:
             Number of samples to return. (default 1).
         z : float, optional
             Redshift of the requested samples. If ``None`` samples from all redshifts. (default ``None``).
+        idx : numpy.array, optional
+            Array of indicies of the requested samples. (default ``None``).
             
         Returns
         -------
@@ -414,14 +416,17 @@ class BAHAMASDataset:
             Array with the redshifts of the samples.
         """
         
-        idx = np.random.choice(self.n_sample, size=size, replace=False)
-        if z is None:
-            idx *= len(self.redshifts)
-            z = [self.sample_idx_to_redshift(i) for i in idx]
+        if idx is None:
+            idx = np.random.choice(self.n_sample, size=size, replace=False)
+            if z is None:
+                idx *= len(self.redshifts)
+                z = [self.sample_idx_to_redshift(i) for i in idx]
+            else:
+                idx_offset = self.redshifts.index(z)*self.n_sample
+                idx += idx_offset
+                z = [z]*size
         else:
-            idx_offset = self.redshifts.index(z)*self.n_sample
-            idx += idx_offset
-            z = [z]*size
+            z = [self.sample_idx_to_redshift(i) for i in idx]
             
         samples = []
         for i in idx:
