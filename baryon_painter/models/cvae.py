@@ -112,9 +112,12 @@ class CVAE(torch.nn.Module):
         self.ELBO = -self.KL_term*self.beta_KL + self.log_likelihood.sum()
         return self.ELBO
     
-    def sample_P(self, y, return_var=False, aux_label=None):
+    def sample_P(self, y, return_var=False, aux_label=None, z=None):
         with torch.no_grad():
-            z = torch.randn(size=(y.size(0), *self.dim_z), device=self.device)
+            if z is None:
+                z = torch.randn(size=(y.size(0), *self.dim_z), device=self.device)
+            else:
+                z = torch.tensor(z, device=self.device, dtype=y.dtype)
             p = self.P(z, y, L=1, aux_label=aux_label)
             mu = p[0]
             if len(p) == 2:
