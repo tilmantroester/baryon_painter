@@ -28,8 +28,8 @@ if __name__ == "__main__":
     n_scale = 1
     n_aux_label = 1
     label_fields = ["pressure"]
-#     redshifts = [0.0, 0.125, 0.25, 0.375, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
-    redshifts = [0.0, 0.125, 0.375, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+    redshifts = [0.0, 0.125, 0.25, 0.375, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+#     redshifts = [0.0, 0.125, 0.375, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
     range_compress_transform, range_compress_inv_transform = data_transforms.create_range_compress_transforms(
                                                                     k_values={"dm" : 4.0, 
@@ -155,7 +155,7 @@ if __name__ == "__main__":
             gamma = 0.5
             return max(min_lr, 0.5**((pepoch-min_pepoch)//step))
 
-    run_name = "single_scale_max_z2_no_z0.25_log_shift_softmax_lr1e-3"
+    run_name = "single_scale_max_z2_no_log_shift_softmax_lr1e-3"
     painter.train(n_epoch=2, n_pepoch=256, learning_rate=1e-3, batch_size=4,
                   adaptive_learning_rate=adaptive_lr, 
                   adaptive_batch_size=adaptive_batch_size,
