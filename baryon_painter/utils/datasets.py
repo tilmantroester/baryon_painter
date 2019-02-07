@@ -128,7 +128,7 @@ class BAHAMASDataset:
                 missing = set(redshifts) - set(self.redshifts)
                 raise ValueError(f"The requested redshifts are not in the file list: redshift(s) {missing} is missing.")
         else:
-            self.redshifts = np.array(sorted(list(self.redshifts)))
+            self.redshifts = sorted(list(self.redshifts))
             
         if files is not None:
             # Load data from files
@@ -280,7 +280,7 @@ class BAHAMASDataset:
         Returns
         -------
         stats : dict
-            Dictionary with statistics of the stack. At this point only contains 
+            Dictionary with statistics of the stack. At this point only contains
             the mean and variance of all stacks in the dataset.
         """
         
@@ -293,7 +293,7 @@ class BAHAMASDataset:
                  "var"  : var_100+var_150}
         
         if field == self.input_field and self.scale_to_SLICS:
-            stats["mean"] = 0 #*= 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)
+            stats["mean"] *= 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)
             stats["var"] *= (1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463))**2
         return stats
 
@@ -359,7 +359,7 @@ class BAHAMASDataset:
 
         d_input = self.get_stack(self.input_field, z, idx)
         if self.scale_to_SLICS:
-            d_input = 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)*d_input - self.stats[self.input_field][z]["mean"]
+            d_input = 1/(self.n_grid/8*5)*0.2793/(0.2793-0.0463)*d_input
         if self.subtract_minimum:
             d_input -= d_input.min()
         if transform:
