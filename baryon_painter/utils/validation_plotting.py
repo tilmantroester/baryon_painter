@@ -157,7 +157,7 @@ def plot_power_spectra(output_true, output_pred, input, L,
         
     return fig, ax
 
-def plot_histogram(output_true, output_pred, n_sample=1, labels=[], plot_size=(4,2), logscale=False):
+def plot_histogram(output_true, output_pred, n_sample=1, labels=[], plot_size=(4,2), n_bin=100, x_logscale=False, y_logscale=False, **plot_kwargs):
     n_col = output_true.shape[1]
     
     fig, ax = plt.subplots(1, n_col, sharex=True, figsize=(plot_size[0]*n_col, plot_size[1]))
@@ -165,17 +165,29 @@ def plot_histogram(output_true, output_pred, n_sample=1, labels=[], plot_size=(4
         ax = np.atleast_1d(ax)
         
     for i in range(n_col):
-        ax[i].hist(output_true[:n_sample,i].flatten(), bins=50, density=True, alpha=0.5, facecolor="C0", label="Truth")
-        ax[i].hist(output_pred[:n_sample,i].flatten(), bins=50, density=True, alpha=0.5, facecolor="C1", label="Predicted")
+        d_true = output_true[:n_sample,i].flatten()
+        d_pred = output_pred[:n_sample,i].flatten()
+
+        plot_min = min(d_true.min(), d_pred.min())
+        plot_max = max(d_true.max(), d_pred.max())
+        if x_logscale:
+            bins = np.logspace(np.log10(plot_min), np.log10(plot_max), n_bin, endpoint=True)
+        else:
+            bins = np.linspace(plot_min, plot_max, n_bin, endpoint=True)
+
+        ax[i].hist(d_true, bins=bins, density=True, alpha=0.5, facecolor="C0", label="Truth", **plot_kwargs)
+        ax[i].hist(d_pred, bins=bins, density=True, alpha=0.5, facecolor="C1", label="Predicted", **plot_kwargs)
     
     for p in ax:
-        p.grid("off")
+        p.grid(False)
         p.legend()
-        if logscale:
+        if x_logscale:
+            p.set_xscale("log")
+        if y_logscale:
             p.set_yscale("log")
         
     if len(labels) >= n_col:
         for i in range(n_col):
-            ax[i].set_title(labels[i])
+            ax[i].set_xlabel(labels[i])
             
     return fig, ax
