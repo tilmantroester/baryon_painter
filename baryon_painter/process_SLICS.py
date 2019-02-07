@@ -66,29 +66,33 @@ def generate_tiling(n_pixel_plane, n_pixel_tile, min_tile_overlap=0.5):
             tile_slices[-1].append(tile_slice)
     return tile_origins, tile_slices
 
-def process_SLICS(painter, #transform, inverse_transform,
-                  tile_size, n_pixel_tile, n_pixel_output,
+def process_SLICS(painter, 
+                  tile_size, n_pixel_tile, 
                   LOS, z_SLICS, delta_size, delta_path, massplane_path, shifts_path,
-                  min_tiling_overlap=0.5, stats=None, verbose=True, 
+                  z_slice,
+                  min_tiling_overlap=0.5, verbose=True, 
                   SLICS_density=False,
                   regularise=False,
                   regularise_std=None,
                   return_problematic_tiles=False,
-                  ):
+                 ):
+    if len(z_SLICS) != len(z_slice):
+        raise ValueError("Shapes of z_SLICS and z_slice need to match!")
+    
     n_pixel_delta = 7745
     n_pixel_massplane = 4096*3
     massplane_size = 505 # Mpc/h
     
     painted_planes = []
     
-    for i, z in enumerate(z_SLICS):
-        if verbose: print(f"Processing z={z:.3f}")
+    for i in range(len(z_SLICS)):
+        if verbose: print(f"Processing z={z_SLICS[i]:.3f}")
         if delta_size[i] < tile_size:
             if verbose: print("  Tile bigger than delta plane, using mass planes.")
             # Get tile from mass plane, then cut out delta map footprint
             shifts = np.loadtxt(os.path.join(shifts_path, f"random_shift_LOS{LOS}"))[::-1]
             projection = lambda idx: ["xy", "xz", "yz"][idx%3]
-            massplane_file = os.path.join(massplane_path, f"{z:.3f}proj_half_finer_{projection(i)}.dat_LOS{LOS}")
+            massplane_file = os.path.join(massplane_path, f"{z_SLICS[i]:.3f}proj_half_finer_{projection(i)}.dat_LOS{LOS}")
             
             if verbose: print(f"  Loading {massplane_file}.")
             plane = np.fromfile(massplane_file, dtype=np.float32)[1:].reshape(4096*3, -1).T
@@ -105,20 +109,20 @@ def process_SLICS(painter, #transform, inverse_transform,
             
             if verbose: print(f"  Painting on tile.")
             painted_tile = painter.paint(input=tile, 
-                                         z=z)
+                                         z=z_slice[i])
             
             painted_plane = get_tile(painted_tile, shift=((1-delta_size[i]/tile_size)/2, (1-delta_size[i]/tile_size)/2),
                                      tile_relative_size=delta_size[i]/tile_size)
             painted_planes.append(painted_plane)
         else:
             if SLICS_density:
-                delta_file = os.path.join(delta_path, f"{z:.3f}density_LOS{LOS}.fits")
+                delta_file = os.path.join(delta_path, f"{z_SLICS[i]:.3f}density_LOS{LOS}.fits")
                 with fits.open(delta_file) as hdu:
                     delta = hdu[0].data.T
                 delta *= 1/(3072**3/2/12288**2)/64
             else:
                 # Get tiles from delta map
-                delta_file = os.path.join(delta_path, f"{z:.3f}delta.dat_bicubic_LOS{LOS}")
+                delta_file = os.path.join(delta_path, f"{z_SLICS[i]:.3f}delta.dat_bicubic_LOS{LOS}")
                 
                 delta = np.fromfile(delta_file, dtype=np.float32).reshape(7745, -1).T
                 delta += 96 # Mean of massplane
@@ -141,7 +145,7 @@ def process_SLICS(painter, #transform, inverse_transform,
                     tile = scipy.ndimage.zoom(tile, zoom=n_pixel_tile/tile.shape[0], mode="reflect")
                     if verbose: print(f"    Painting on tile {j+1}-{k+1}")
                     painted_tile = painter.paint(input=tile, 
-                                                 z=z)
+                                                 z=z_slice[i])
 
                     w = make_weight_map(tile.shape, falloff=0.05, sigma=0.5)
                     if regularise_std is not None:
