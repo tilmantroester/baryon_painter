@@ -43,6 +43,11 @@ class CVAE(torch.nn.Module):
                 self.predict_var = False
                 self.p_var_out = None
             self.use_aux_label = architecture["aux_label"]
+            if "prior_z_y" in architecture:
+                # Use prior network to get z
+                self.prior_network = build_sequential(architecture["prior_z_y"])
+            else:
+                self.prior_network = None
         else:
             raise NotImplementedError("Architecture {} not supported yet!".format(architecture["type"]))
                 
@@ -54,6 +59,11 @@ class CVAE(torch.nn.Module):
         if "cuda" in self.device.type:
             self.cuda()
         
+    def sample_z(self, z_mu, z_log_var):
+        eps = torch.randn(size=(self.L, *z_mu.size()), device=self.device)
+        z = z_mu + eps * (torch.exp(z_log_var/2) + self.min_z_var)
+        return z.view(-1, *self.dim_z)
+    
     def Q(self, x, y, aux_label=None):
         if aux_label is not None and self.use_aux_label:
             y = merge_aux_label(y, aux_label)
@@ -66,9 +76,27 @@ class CVAE(torch.nn.Module):
 
         assert self.z_mu.size()[1:] == self.dim_z, "Dimension of z_mu does not match dim_z: {} vs {}.".format(self.z_mu.size()[1:], self.dim_z)
 
-        eps = torch.randn(size=(self.L, *self.z_mu.size()), device=self.device)
-        z = self.z_mu + eps * (torch.exp(self.z_log_var/2) + self.min_z_var)
-        return z.view(-1, *self.dim_z)
+        return self.sample_z(self.z_mu, self.z_log_var)
+    
+    def prior(self, y, aux_label=None):
+        if self.prior_network is None:
+            return 0, 0
+        else:
+            if aux_label is not None and self.use_aux_label:
+                y = merge_aux_label(y, aux_label)
+            h = self.prior_network(y)
+            z_mu = h[:,0]
+            z_log_var = h[:,1]
+
+            assert z_mu.size()[1:] == self.dim_z, "Dimension of z_mu does not match dim_z: {} vs {}.".format(z_mu.size()[1:], self.dim_z)
+
+            return z_mu, z_log_var
+    
+    def sample_prior(self, y, aux_label=None):
+        with torch.no_grad():
+            z_mu, z_log_var = self.prior(y, aux_label)
+            return self.sample_z(z_mu, z_log_var)
+
     
     def P(self, z, y, L=1, aux_label=None):
         if aux_label is not None and self.use_aux_label:
@@ -93,7 +121,11 @@ class CVAE(torch.nn.Module):
         z = self.Q(x, y, aux_label)
         M = x.size(0)
         
-        self.KL_term = 0.5/M * torch.sum(self.z_mu**2 + torch.exp(self.z_log_var) - (1 + self.z_log_var))
+        prior_z_mu, prior_z_log_var = self.prior(y, aux_label)
+        prior_z_var = torch.exp(prior_z_log_var)
+        
+        self.KL_term = 0.5/M * torch.sum((prior_z_mu-self.z_mu)**2/prior_z_var + torch.exp(self.z_log_var)/prior_z_var \
+                                          + prior_z_log_var - self.z_log_var - 1)
 
         params = self.P(z, y, self.L, aux_label)
         x_mu = params[0]
@@ -115,7 +147,7 @@ class CVAE(torch.nn.Module):
     def sample_P(self, y, return_var=False, aux_label=None, z=None):
         with torch.no_grad():
             if z is None:
-                z = torch.randn(size=(y.size(0), *self.dim_z), device=self.device)
+                z = self.sample_prior(y, aux_label)
             else:
                 z = torch.tensor(z, device=self.device, dtype=y.dtype)
             p = self.P(z, y, L=1, aux_label=aux_label)
