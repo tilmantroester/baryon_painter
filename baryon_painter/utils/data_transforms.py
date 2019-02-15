@@ -74,6 +74,8 @@ def create_range_compress_transforms(k_values, modes={}, eps=1e-3, sqrt_of_mean=
         elif mode.lower() == "shift-log":
 #             return np.where(x >= 0, np.log(x/std+1)/k, 0)
             return np.log(x/std+1)/k
+        elif mode.lower() == "shift-log-2p":
+            return np.log(x/std+k[0])/k[1]
         elif mode.lower() == "log-tanh":
             return np.where(x > 0, np.tanh(np.log(x/std+eps)/k), -1)
         elif mode.lower() == "x/(1+x)":
@@ -94,6 +96,8 @@ def create_range_compress_transforms(k_values, modes={}, eps=1e-3, sqrt_of_mean=
         elif mode.lower() == "shift-log":
 #             return np.where(x >= 0, (np.exp(x*k)-1)*std, 0)
             return (np.exp(x*k)-1)*std
+        elif mode.lower() == "shift-log-2p":
+            return (np.exp(x*k[1])-k[0])*std
         elif mode.lower() == "log-tanh":
             return np.where(x > -1, (np.exp(np.arctanh(x)*k)-eps)*std, 0)
         elif mode.lower() == "x/(1+x)":

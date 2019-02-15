@@ -60,6 +60,8 @@ class CVAEPainter(Painter):
     def train(self, n_epoch=5, n_pepoch=None, learning_rate=1e-4, batch_size=1,
                     adaptive_learning_rate=None, adaptive_batch_size=None,
                     validation_pepochs=[0, 1], validation_batch_size=4,
+                    validation_loss_frequency=100,
+                    validation_loss_batch_size=16,
                     checkpoint_frequency=1000, statistics_report_frequency=50, 
                     loss_plot_frequency=1000, mavg_window_size=20,
                     plot_sample_var=False,
@@ -116,6 +118,7 @@ class CVAEPainter(Painter):
                 for i, l in enumerate(stats_labels):
                     stats_labels[i] = l.replace(f"{j*n_feature_per_field + k}", 
                                                 f"{f}_{k}")
+        stats_labels += ["lr", "batch_size"]
             
              
         if output_path is not None:
@@ -123,17 +126,23 @@ class CVAEPainter(Painter):
             
             model_checkpoint_template = os.path.join(output_path, "checkpoint_sample{sample:0>10}_batch{batch}_epoch{epoch}{suffix}")
             validation_filename_template = os.path.join(output_path, "{{plot_type}}_epoch{epoch}_batch{batch}_sample{sample}{suffix}.png")
-            stats_filename = os.path.join(output_path, "stats.txt")
+            training_stats_filename = os.path.join(output_path, "training_stats.txt")
+            validation_stats_filename = os.path.join(output_path, "validation_stats.txt")
         else:
             if save_plots:
                 raise ValueError("save_plots=True requires output_path to be set.")
             model_checkpoint_template = None
             validation_filename_template = None
-            stats_filename = None
+            training_stats_filename = None
+            validation_stats_filename = None
             
             
-        stats = TrainingStats(stats_labels, mavg_window_size, 
-                              stats_filename=stats_filename)
+        training_stats = TrainingStats(stats_labels, mavg_window_size, 
+                                       stats_filename=training_stats_filename)
+        
+        validation_stats = TrainingStats(stats_labels, mavg_window_size, 
+                                         stats_filename=validation_stats_filename,
+                                         dump_to_file_frequency=1)
    
                     
         if show_plots:
@@ -147,6 +156,7 @@ class CVAEPainter(Painter):
 
         last_pepoch_processed_samples = 0
         last_loss_plot = 0
+        last_validation_loss_dump = 0
         last_stat_dump = 0
         last_checkpoint_dump = 0
         
@@ -180,6 +190,7 @@ class CVAEPainter(Painter):
                     if callable(KL_anneal_fn):
                         self.model.beta_KL = KL_anneal_fn(i_pepoch)
                         
+                    # Make diagnostic plots
                     if i_pepoch in validation_pepochs:
                         if save_plots:
                             validation_filename = validation_filename_template.format(epoch=i_epoch, batch=i_batch, sample=n_processed_samples, suffix="")
@@ -216,7 +227,14 @@ class CVAEPainter(Painter):
                 n_processed_batches += 1
                                 
                 with torch.no_grad():
-                    stats.push_loss(n_processed_samples, *self.model.get_stats())
+                    lr = [p["lr"] for p in optimizer.param_groups]
+                    training_stats.push_loss(n_processed_samples, *self.model.get_stats(), lr[0], batch_size)
+                    if n_processed_samples - validation_loss_frequency >= last_validation_loss_dump:
+                        last_validation_loss_dump = n_processed_samples
+                        # Get validation loss
+                        stats = self.validate(validation_batch_size=validation_loss_batch_size,
+                                              compute_loss=True)
+                        validation_stats.push_loss(n_processed_samples, *stats, lr[0], batch_size)
 
                     if n_processed_samples - checkpoint_frequency >= last_checkpoint_dump and model_checkpoint_template is not None:
                         last_checkpoint_dump = n_processed_samples
@@ -232,14 +250,14 @@ class CVAEPainter(Painter):
                         print("Epoch: [{}/{}], P-Epoch: [{}/{}], Batch: [{}/{}], Loss: {:.3e}".format(i_epoch, n_epoch, 
                                                                                                       i_pepoch, n_pepoch, 
                                                                                                       i_batch, len(self.training_data)//batch_size,
-                                                                                                      stats.loss_terms["ELBO"]["mavg"][-1]))
+                                                                                                      training_stats.loss_terms["ELBO"]["mavg"][-1]))
                         print("Processed batches: {}, processed samples: {}, batch size: {}, learning rate: {}".format(n_processed_batches, n_processed_samples, batch_size,
-                                                                                                    " ".join("{:.1e}".format(p["lr"]) for p in optimizer.param_groups)))
-                        print(stats.get_pretty_str(n_col=1))
+                                                                                                    " ".join("{:.1e}".format(lr_) for lr_ in lr)))
+                        print(training_stats.get_pretty_str(n_col=1))
                     
                     if n_processed_samples - loss_plot_frequency >= last_loss_plot and loss_plot_frequency > 0:
                         last_loss_plot = n_processed_samples
-                        stats.plot_loss(window_size=200)
+                        training_stats.plot_loss(window_size=200)
                         if show_plots:
                             plt.show()
                         
@@ -261,9 +279,10 @@ class CVAEPainter(Painter):
         self.save_state_to_file((checkpoint_base_filename+"_state", checkpoint_base_filename+"_meta"))
         self.save_state_to_file((os.path.join(output_path, "model_state"), os.path.join(output_path, "model_meta")))
 
-        return stats
+        return training_stats, validation_stats
 
     def validate(self, validation_batch_size=8,
+                       compute_loss=False,
                        validation_redshift=None,
                        plot_samples=1, plot_sample_var=False, 
                        plot_power_spectra=["auto"], 
@@ -279,6 +298,10 @@ class CVAEPainter(Painter):
             y = torch.tensor(fields[0], device=self.model.device)
             aux_label = torch.tensor(z, device=self.model.device, dtype=y.dtype)
 
+            if compute_loss:
+                ELBO = self.model(x, y, aux_label)
+                return self.model.get_stats()
+            
             if plot_sample_var:
                 x_pred, x_pred_var = self.model.sample_P(y, return_var=True, aux_label=aux_label)
             else:
@@ -322,7 +345,7 @@ class CVAEPainter(Painter):
                                                                  output_pred=x_pred.cpu().numpy(),
                                                                  n_sample=histogram_n_sample,
                                                                  labels=self.test_data.label_fields,
-                                                                 logscale=mode=="log")
+                                                                 y_logscale=mode=="log")
                     if show_plots:
                         fig.show()
                     if save_plots:
@@ -347,7 +370,8 @@ class CVAEPainter(Painter):
             y = torch.tensor(y, device=self.compute_device)
             aux_label = torch.tensor(z, device=self.compute_device, dtype=y.dtype)
             prediction = self.model.sample_P(y, aux_label=aux_label,
-                                             z=np.zeros((1,*self.model.dim_z))).cpu().numpy()
+#                                              z=np.zeros((1,*self.model.dim_z))
+                                            ).cpu().numpy()
         
         if inverse_transform and self.inverse_transform is not None:
             if len(self.label_fields) > 1:
@@ -427,6 +451,10 @@ class TrainingStats:
             with open(self.stats_filename, "w") as f:
                 f.write("# Batch nr, sample nr, {}\n".format(", ".join(loss_terms)))
     
+    def __del__(self):
+        if self.stats_filename is not None:
+            self.flush_to_file()
+                    
     def push_loss(self, n_sample, *args):
         self.n_batches += 1
         self.n_processed_samples.append(n_sample)
@@ -436,11 +464,14 @@ class TrainingStats:
         
         if self.n_batches - self.dump_to_file_frequency >= self.last_dump_to_file \
            and self.stats_filename is not None:
-            with open(self.stats_filename, "a") as f:
-                for s in range(self.last_dump_to_file, self.n_batches):
-                    f.write(self.get_str(s) + "\n")
-            self.last_dump_to_file = self.n_batches
+            self.flush_to_file()
             
+    def flush_to_file(self):
+        with open(self.stats_filename, "a") as f:
+            for s in range(self.last_dump_to_file, self.n_batches):
+                f.write(self.get_str(s) + "\n")
+        self.last_dump_to_file = self.n_batches
+        
     def get_str(self, idx=-1):
         batch = idx if idx >= 0 else self.n_batches + idx + 1
         s = f"{batch} {self.n_processed_samples[idx]} "

@@ -62,7 +62,7 @@ def plot_samples(output_true, output_pred, input, output_pred_var=None,
                     ax[2*i+2,j+n_feature_per_field].imshow(output_pred_var_plot, **kwargs)
     
     for p in ax.flat:
-        p.grid("off")
+        p.grid(False)
         p.set_axis_off()
 
     ax[0,0].set_title(input_label) 
