@@ -10,16 +10,16 @@ def test_dataset():
     with open("data/training_data/BAHAMAS/stacks_uncompressed/test_files_info.pickle", "rb") as f:
         test_files_info = pickle.load(f)
 
-    dataset = BAHAMASDataset(test_files_info, 
+    dataset = BAHAMASDataset(files=test_files_info, 
                              root_path="data/training_data/BAHAMAS/stacks_uncompressed/")
 
-    d, idx = dataset[124]
+    d, idx, z = dataset[124]
 
     assert isinstance(d, list)
     assert isinstance(idx, int)
     assert isinstance(d[0], np.ndarray)
 
-    dataset = BAHAMASDataset(test_files_info, 
+    dataset = BAHAMASDataset(files=test_files_info, 
                              root_path="data/training_data/BAHAMAS/stacks_uncompressed/",
                              label_fields=["pressure", "gas"],
                              input_field="dm",
@@ -44,7 +44,7 @@ def test_transforms():
 
         return (x+1.0)*stats[field][z]["mean"]#(x+1)*stats[field][z]["mean"]
 
-    dataset = BAHAMASDataset(test_files_info, 
+    dataset = BAHAMASDataset(files=test_files_info, 
                              root_path="data/training_data/BAHAMAS/stacks_uncompressed/",
                              transform=transform_to_delta,
                              inverse_transform=inv_transform_to_delta)
@@ -52,7 +52,7 @@ def test_transforms():
     sample_idx = 12
     z = dataset.sample_idx_to_redshift(sample_idx)
 
-    d, _ = dataset[sample_idx]
+    d, _, _ = dataset[sample_idx]
 
     transform = dataset.get_transforms(idx=sample_idx)
     inv_transform = dataset.get_inverse_transforms(idx=sample_idx)
