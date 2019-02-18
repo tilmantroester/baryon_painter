@@ -80,7 +80,8 @@ class CVAE(torch.nn.Module):
     
     def prior(self, y, aux_label=None):
         if self.prior_network is None:
-            return 0, 0
+            z_mu =  torch.zeros((y.shape[0], *self.dim_z), device=self.device)
+            z_log_var = torch.zeros((y.shape[0], *self.dim_z), device=self.device)
         else:
             if aux_label is not None and self.use_aux_label:
                 y = merge_aux_label(y, aux_label)
@@ -88,9 +89,9 @@ class CVAE(torch.nn.Module):
             z_mu = h[:,0]
             z_log_var = h[:,1]
 
-            assert z_mu.size()[1:] == self.dim_z, "Dimension of z_mu does not match dim_z: {} vs {}.".format(z_mu.size()[1:], self.dim_z)
+        assert z_mu.size()[1:] == self.dim_z, "Dimension of z_mu does not match dim_z: {} vs {}.".format(z_mu.size()[1:], self.dim_z)
 
-            return z_mu, z_log_var
+        return z_mu, z_log_var
     
     def sample_prior(self, y, aux_label=None):
         with torch.no_grad():
@@ -131,7 +132,7 @@ class CVAE(torch.nn.Module):
         x_mu = params[0]
         self.x_mu = x_mu
         if self.predict_var: 
-            log_x_var = params[1]/math.log(self.dim_x[0]*self.dim_x[1]*self.dim_x[2]) * math.log(self.min_x_var)
+            log_x_var = params[1]#/math.log(self.dim_x[0]*self.dim_x[1]*self.dim_x[2]) * math.log(self.min_x_var)
             self.x_var = torch.exp(log_x_var)
             self.log_likelihood_fixed_var = -0.5*math.log(2*pi) + (-0.5 * (x.repeat(self.L, 1, 1, 1) - x_mu)**2).sum(dim=[3,2,0])/(M*self.L)
             self.log_likelihood_free_var = -0.5*math.log(2*pi) + (-0.5*log_x_var - 0.5*(x.repeat(self.L, 1, 1, 1) - x_mu)**2/self.x_var).sum(dim=[3,2,0])/(M*self.L)
