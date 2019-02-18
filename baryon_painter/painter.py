@@ -128,6 +128,7 @@ class CVAEPainter(Painter):
             validation_filename_template = os.path.join(output_path, "{{plot_type}}_epoch{epoch}_batch{batch}_sample{sample}{suffix}.png")
             training_stats_filename = os.path.join(output_path, "training_stats.txt")
             validation_stats_filename = os.path.join(output_path, "validation_stats.txt")
+            training_sample_idx_file = os.path.join(output_path, "training_sample_indicies.txt")
         else:
             if save_plots:
                 raise ValueError("save_plots=True requires output_path to be set.")
@@ -135,6 +136,7 @@ class CVAEPainter(Painter):
             validation_filename_template = None
             training_stats_filename = None
             validation_stats_filename = None
+            training_sample_idx_file = None
             
             
         training_stats = TrainingStats(stats_labels, mavg_window_size, 
@@ -151,6 +153,8 @@ class CVAEPainter(Painter):
         if n_pepoch is None:
             n_pepoch = n_epoch*len(self.training_data)//pepoch_size
             
+        training_sample_indicies = []
+        
         n_processed_samples = 0
         n_processed_batches = 0
 
@@ -227,6 +231,8 @@ class CVAEPainter(Painter):
                 n_processed_batches += 1
                                 
                 with torch.no_grad():
+                    training_sample_indicies += list(batch_data[1].numpy())
+                    
                     lr = [p["lr"] for p in optimizer.param_groups]
                     training_stats.push_loss(n_processed_samples, *self.model.get_stats(), lr[0], batch_size)
                     if n_processed_samples - validation_loss_frequency >= last_validation_loss_dump:
@@ -254,6 +260,11 @@ class CVAEPainter(Painter):
                         print("Processed batches: {}, processed samples: {}, batch size: {}, learning rate: {}".format(n_processed_batches, n_processed_samples, batch_size,
                                                                                                     " ".join("{:.1e}".format(lr_) for lr_ in lr)))
                         print(training_stats.get_pretty_str(n_col=1))
+                        
+                        if training_sample_idx_file is not None:
+                            with open(training_sample_idx_file, "wb") as f:
+                                pickle.dump(training_sample_indicies, f)
+                            
                     
                     if n_processed_samples - loss_plot_frequency >= last_loss_plot and loss_plot_frequency > 0:
                         last_loss_plot = n_processed_samples
