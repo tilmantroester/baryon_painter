@@ -53,6 +53,7 @@ class CVAE(torch.nn.Module):
                 
         self.min_z_var = architecture["min_z_var"] if "min_z_var" in architecture else 1e-7
         
+        self.likelihood_scaling = architecture["likelihood_scaling"] if "likelihood_scaling" in architecture else 1.0
         self.alpha_var = 1.0
         self.beta_KL = 1.0
 
@@ -142,7 +143,7 @@ class CVAE(torch.nn.Module):
             # Fixed variance
             self.log_likelihood = -0.5*math.log(2*pi) + 1/(M*self.L)*(-0.5 * (x.repeat(self.L, 1, 1, 1) - x_mu)**2).sum(dim=[3,2,0])
 
-        self.ELBO = -self.KL_term*self.beta_KL + self.log_likelihood.sum()
+        self.ELBO = -self.KL_term*self.beta_KL + self.likelihood_scaling*self.log_likelihood.sum()
         return self.ELBO
     
     def sample_P(self, y, return_var=False, aux_label=None, z=None):
