@@ -2,9 +2,48 @@ import os
 import numpy as np
 import scipy.ndimage
 
+import pyccl as ccl
+
 import astropy.io.fits as fits
 
 pi = np.pi
+
+def create_y_map(painted_planes, z, resolution, map_size, cosmo, order=3):
+    y_map = np.zeros((resolution, resolution))
+    
+    h = cosmo.params.parameters.h
+    d_A = ccl.comoving_angular_distance(cosmo, 1/(1+np.array(z)))
+    d_A = np.append(d_A, d_A[-1] + 252.5/h)
+    
+    d_A_eff = d_A[:-1] # z is already the slice mid-point
+    a_eff = np.array([ccl.scale_factor_of_chi(cosmo, d) for d in d_A_eff])
+    
+    y_fac = 8.125561e-16 # sigma_T/m_e*c^2 in SI
+    mpc = 3.086e22 # m/Mpc
+    eV = 1.60218e-19 # Electronvolt in Joules
+    cm = 0.01 # Centimetre in metres
+
+    Xe = 1.17
+    Xi = 1.08
+    
+    V_c = (400/h/2048*mpc/cm)**3 # Volume of cell in cm^3
+    y_fac = y_fac*eV*mpc**-2 # sigma_T/m_e*c^2 in Mpc^2 eV^-1
+    
+    theta_pix = map_size/resolution*pi/180 # Pixel size in radians
+    L_pix = theta_pix*d_A_eff*a_eff # Physical pixel size in Mpc
+    
+    for i, d in enumerate(painted_planes):
+        zoom_factor = resolution/d.shape[0]
+        d = d.copy()
+        d[np.isnan(d)] = 0
+        
+        d *= V_c*(Xe+Xi)/Xe*y_fac/L_pix[i]**2/zoom_factor**2
+        print(f"z : {z[i]:0.3f}, plane shape: {d.shape}, zoom_factor: {zoom_factor:0.3f}")
+        print(f"{np.isnan(d).sum()}")
+        
+        y_map += scipy.ndimage.zoom(d, zoom=zoom_factor, order=order, mode="mirror")
+        
+    return y_map
 
 def get_tile(m, shift, tile_relative_size, expansion_factor=1):
     n_pixel_m = m.shape[0]
