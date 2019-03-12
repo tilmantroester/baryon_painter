@@ -14,9 +14,9 @@ if __name__ == "__main__":
     parser.add_argument("--model-type", default="CVAE")
     parser.add_argument("--CVAE-path")
 
-    parser.add_argument("--GAN-module-path")
-    parser.add_argument("--GAN-part-path")
-    parser.add_argument("--GAN-checkpoint")
+    parser.add_argument("--CGAN-module-path")
+    parser.add_argument("--CGAN-parts-path")
+    parser.add_argument("--CGAN-checkpoint")
 
     parser.add_argument("--SLICS-base-path", required=True)
     parser.add_argument("--SLICS-LOS", required=True)
@@ -37,22 +37,22 @@ if __name__ == "__main__":
         cvae_base_path = args.CVAE_path
         painter = baryon_painter.painter.CVAEPainter((os.path.join(cvae_base_path, "model_state"),
                                                       os.path.join(cvae_base_path, "model_meta")))
-    elif args.model_type == "GAN":
+    elif args.model_type == "CGAN":
         print("Using GAN")
-        gan_module_path = args.GAN_module_path
+        gan_module_path = args.CGAN_module_path
 
         import sys
         sys.path.append(gan_module_path)
         from src.tools.template import GAN_Painter
 
-        parts_folder = args.GAN_parts_path
-        checkpoint = args.GAN_checkpoint
+        parts_folder = args.CGAN_parts_path
+        checkpoint = args.CGAN_checkpoint
 
         painter = GAN_Painter(parts_folder, 
                               checkpoint_file=checkpoint,
                               device="cpu")
     else:
-        parser.error("Only CVAE and GAN are supported for --model-type.")
+        parser.error("Only CVAE and CGAN are supported for --model-type.")
 
 
     SLICS_base_path = args.SLICS_base_path
