@@ -148,7 +148,8 @@ def process_SLICS(painter,
             
             if verbose: print(f"  Painting on tile.")
             painted_tile = painter.paint(input=tile, 
-                                         z=z_slice[i])
+                                         z=z_slice[i],
+                                         transform=True, inverse_transform=True)
             
             painted_plane = get_tile(painted_tile, shift=((1-delta_size[i]/tile_size)/2, (1-delta_size[i]/tile_size)/2),
                                      tile_relative_size=delta_size[i]/tile_size)
@@ -184,7 +185,8 @@ def process_SLICS(painter,
                     tile = scipy.ndimage.zoom(tile, zoom=n_pixel_tile/tile.shape[0], mode="reflect")
                     if verbose: print(f"    Painting on tile {j+1}-{k+1}")
                     painted_tile = painter.paint(input=tile, 
-                                                 z=z_slice[i])
+                                                 z=z_slice[i],
+                                                 transform=True, inverse_transform=True)
 
                     w = make_weight_map(tile.shape, falloff=0.05, sigma=0.5)
                     if regularise_std is not None:
