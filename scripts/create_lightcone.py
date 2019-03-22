@@ -26,6 +26,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--output-resolution", default=7745//5)
 
+    parser.add_argument("--drop-planes")
     parser.add_argument("--output-file", required=True)
     parser.add_argument("--output-file-planes")
 
@@ -67,6 +68,8 @@ if __name__ == "__main__":
     shifts_path= os.path.join(SLICS_base_path, "random_shifts")
 
     delta_filenames = glob.glob(os.path.join(delta_path, f"*delta.dat_bicubic_LOS{LOS}"))
+    if len(delta_filenames) == 0:
+        raise RuntimeError(f"LOS {LOS} isn't complete.")
 
     # These are the redshifts of the mid-points of the slices
     z_SLICS = [float(z[:z.find("delta")]) for z in [os.path.split(f)[1] for f in delta_filenames]]
@@ -113,6 +116,13 @@ if __name__ == "__main__":
                               resolution=output_resolution, map_size=10.0, cosmo=cosmo_SLICS, order=5)
 
     np.save(output_file, y_map)
+    if args.drop_planes is not None:
+        n_drop = int(args.drop_planes)
+        y_map = baryon_painter.process_SLICS.create_y_map(painted_planes[n_drop:], z_SLICS[n_drop:n_z], 
+                              resolution=output_resolution, map_size=10.0, cosmo=cosmo_SLICS, order=5)
+
+        np.save(output_file+f"_drop{n_drop}", y_map)
+        
     if args.output_file_planes is not None:
         import pickle
         with open(args.output_file_planes, "wb") as f:
