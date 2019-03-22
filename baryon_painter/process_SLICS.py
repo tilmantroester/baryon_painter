@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import scipy.ndimage
+import scipy.integrate
 
 import pyccl as ccl
 
@@ -8,15 +9,34 @@ import astropy.io.fits as fits
 
 pi = np.pi
 
-def create_y_map(painted_planes, z, resolution, map_size, cosmo, order=3):
+def create_y_map(painted_planes, z, resolution, map_size, cosmo, order=3, verbose=True):
+    def L_pix(cosmo, chi, theta):
+        a = ccl.scale_factor_of_chi(cosmo, chi)
+        return chi*a*theta
+
+    def A_pix_mean(cosmo, chi_lo, chi_hi, theta):
+        f = lambda chi: L_pix(cosmo, chi, theta)**2
+        L = scipy.integrate.quad(f, chi_lo, chi_hi)[0]/(chi_hi-chi_lo)
+        return L
+
     y_map = np.zeros((resolution, resolution))
     
     h = cosmo.cosmo.params.h
     d_A = ccl.comoving_angular_distance(cosmo, 1/(1+np.array(z)))
+    d_A -= 252.5/h/2
+    if d_A[0] < 0:
+        d_A[0] = 0 
     d_A = np.append(d_A, d_A[-1] + 252.5/h)
+
+    theta_pix = map_size/resolution*pi/180 # Pixel size in radians
+    A_pix_eff = np.array([A_pix_mean(cosmo, d_A[i], d_A[i+1], theta_pix) for i in range(len(z))])
     
-    d_A_eff = d_A[:-1] # z is already the slice mid-point
-    a_eff = np.array([ccl.scale_factor_of_chi(cosmo, d) for d in d_A_eff])
+    # Low redshift seems to constribute too much
+    # Effective distance/redshift might better be estimated by considering volume
+    # contributing to that redshift range (i.e., weighted towards higher 
+    # redshift, with diminishing effect).
+    # d_A_eff = d_A[:-1] # z is already the slice mid-point
+    # a_eff = np.array([ccl.scale_factor_of_chi(cosmo, d) for d in d_A_eff])
     
     y_fac = 8.125561e-16 # sigma_T/m_e*c^2 in SI
     mpc = 3.086e22 # m/Mpc
@@ -29,17 +49,17 @@ def create_y_map(painted_planes, z, resolution, map_size, cosmo, order=3):
     V_c = (400/h/2048*mpc/cm)**3 # Volume of cell in cm^3
     y_fac = y_fac*eV*mpc**-2 # sigma_T/m_e*c^2 in Mpc^2 eV^-1
     
-    theta_pix = map_size/resolution*pi/180 # Pixel size in radians
-    L_pix = theta_pix*d_A_eff*a_eff # Physical pixel size in Mpc
+    # theta_pix = map_size/resolution*pi/180 # Pixel size in radians
+    # L_pix = theta_pix*d_A_eff*a_eff # Physical pixel size in Mpc
     
     for i, d in enumerate(painted_planes):
         zoom_factor = resolution/d.shape[0]
         d = d.copy()
         d[np.isnan(d)] = 0
         
-        d *= V_c*(Xe+Xi)/Xe*y_fac/L_pix[i]**2/zoom_factor**2
-        print(f"z : {z[i]:0.3f}, plane shape: {d.shape}, zoom_factor: {zoom_factor:0.3f}")
-        print(f"{np.isnan(d).sum()}")
+        d *= V_c*(Xe+Xi)/Xe*y_fac/A_pix_eff[i]/zoom_factor**2
+        if verbose: print(f"z : {z[i]:0.3f}, plane shape: {d.shape}, zoom_factor: {zoom_factor:0.3f}")
+        if verbose: print(f"{np.isnan(d).sum()}")
         
         y_map += scipy.ndimage.zoom(d, zoom=zoom_factor, order=order, mode="mirror")
         
@@ -148,7 +168,8 @@ def process_SLICS(painter,
             
             if verbose: print(f"  Painting on tile.")
             painted_tile = painter.paint(input=tile, 
-                                         z=z_slice[i])
+                                         z=z_slice[i],
+                                         transform=True, inverse_transform=True)
             
             painted_plane = get_tile(painted_tile, shift=((1-delta_size[i]/tile_size)/2, (1-delta_size[i]/tile_size)/2),
                                      tile_relative_size=delta_size[i]/tile_size)
@@ -184,7 +205,8 @@ def process_SLICS(painter,
                     tile = scipy.ndimage.zoom(tile, zoom=n_pixel_tile/tile.shape[0], mode="reflect")
                     if verbose: print(f"    Painting on tile {j+1}-{k+1}")
                     painted_tile = painter.paint(input=tile, 
-                                                 z=z_slice[i])
+                                                 z=z_slice[i],
+                                                 transform=True, inverse_transform=True)
 
                     w = make_weight_map(tile.shape, falloff=0.05, sigma=0.5)
                     if regularise_std is not None:
