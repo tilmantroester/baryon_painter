@@ -11,7 +11,7 @@ pi = np.pi
 def create_y_map(painted_planes, z, resolution, map_size, cosmo, order=3):
     y_map = np.zeros((resolution, resolution))
     
-    h = cosmo.params.parameters.h
+    h = cosmo.cosmo.params.h
     d_A = ccl.comoving_angular_distance(cosmo, 1/(1+np.array(z)))
     d_A = np.append(d_A, d_A[-1] + 252.5/h)
     
