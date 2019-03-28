@@ -62,7 +62,13 @@ if __name__ == "__main__":
 
     print(f"Looking in {SLICS_base_path} for SLICS files.")
     print(f"Processing LOS{LOS}.")
-    print(f"Writing result to {output_file}.")
+    print(f"Writing result to {output_file}.npy")
+    if args.drop_planes is not None:
+        n_drop = int(args.drop_planes)
+        output_file_drop = output_file + f"_drop_{n_drop}"
+
+        print(f"Writing result to {output_file_drop}.npy")
+    
     delta_path = os.path.join(SLICS_base_path, "delta")
     massplane_path = os.path.join(SLICS_base_path, "massplanes")
     shifts_path= os.path.join(SLICS_base_path, "random_shifts")
@@ -117,11 +123,9 @@ if __name__ == "__main__":
 
     np.save(output_file, y_map)
     if args.drop_planes is not None:
-        n_drop = int(args.drop_planes)
         y_map = baryon_painter.process_SLICS.create_y_map(painted_planes[n_drop:], z_SLICS[n_drop:n_z], 
                               resolution=output_resolution, map_size=10.0, cosmo=cosmo_SLICS, order=5)
-
-        np.save(output_file+f"_drop{n_drop}", y_map)
+        np.save(output_file_drop, y_map)
         
     if args.output_file_planes is not None:
         import pickle
