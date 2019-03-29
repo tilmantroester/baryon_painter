@@ -24,5 +24,7 @@ pressure_tile_generated = painter.paint(input=dm_tile,
 An example notebook (used to make the plot of the sample tiles above) can be found here: [here](https://github.com/tilmantroester/baryon_painter/blob/master/notebooks/validation_plots.ipynb)
 
 Other potential useful scipts"
-* the training script for the CVAE: ([here](https://github.com/tilmantroester/baryon_painter/blob/master/scripts/CVAE_single_scale.py))
-* the script for the light-cone generation: ([here](https://github.com/tilmantroester/baryon_painter/blob/master/scripts/create_lightcone.py))
+* the training script for the CVAE: [here](https://github.com/tilmantroester/baryon_painter/blob/master/scripts/CVAE_single_scale.py)
+* the script for the light-cone generation: [here](https://github.com/tilmantroester/baryon_painter/blob/master/scripts/create_lightcone.py)
+
+The architectures and training schedules of the fiducial models are described [here](https://github.com/tilmantroester/baryon_painter/blob/master/trained_models/README.md).
