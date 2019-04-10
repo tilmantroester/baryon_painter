@@ -54,6 +54,9 @@ class BAHAMASDataset:
         Inverse transform. The required signature is the same as for the 
         transform. 
         (default ``lambda x, field, z, stats: x``).
+    tile_permutations : bool, optional
+        Apply rotations and flips to the tiles to increase the number of samples
+        by a factor of 16. (default False).
     scale_to_SLICS : bool, optional
         Scale dark matter to match to SLICS delta-planes.
         (default True).
@@ -75,6 +78,7 @@ class BAHAMASDataset:
                  transform=lambda x, field, z, stats: x, 
                  inverse_transform=lambda x, field, z, stats: x,
                  n_feature_per_field=1,
+                 tile_permutations=False,
                  scale_to_SLICS=True,
                  subtract_minimum=False,
                  mmap_mode="r",
@@ -171,10 +175,11 @@ class BAHAMASDataset:
         if min(self.n_stack_100, self.n_stack_150) < self.stack_offset + self.n_stack:
             raise ValueError(f"Highest stack exceeds number of available stacks.")
         
+        self.n_tile_permutation = 8 if tile_permutations else 1
         self.n_tile = n_tile
         self.tile_size = self.n_grid//self.n_tile
-        self.n_total_sample = (self.n_stack_100*self.n_tile**2)*(self.n_stack_150*self.n_tile**2)
-        self.n_sample = self.n_stack**2*self.n_tile**4
+        self.n_total_sample = (self.n_stack_100*self.n_tile**2*self.n_tile_permutation)*(self.n_stack_150*self.n_tile**2*self.n_tile_permutation)
+        self.n_sample = self.n_stack**2*self.n_tile**4*self.n_tile_permutation**2
 
         self.L = L
         self.tile_L = self.L/self.n_tile
@@ -316,11 +321,14 @@ class BAHAMASDataset:
         """
             
         # Remove redshift offset
-        flat_idx = flat_idx%self.n_sample
+        no_z_idx = flat_idx%self.n_sample
+
+        # Remove tile permutation offset
+        no_z_no_perm_idx = no_z_idx%self.n_tile_permutation**2
         
 #         print(f"Getting stack for field {field}, z {z}, idx {flat_idx}")
-        idx = np.unravel_index(flat_idx, dims=(self.n_stack, self.n_tile, self.n_tile, 
-                                               self.n_stack, self.n_tile, self.n_tile))
+        idx = np.unravel_index(no_z_no_perm_idx, dims=(self.n_stack, self.n_tile, self.n_tile, 
+                                                       self.n_stack, self.n_tile, self.n_tile))
         
         slice_idx_100 = idx[0] + self.stack_offset
         slice_idx_150 = idx[3] + self.stack_offset
@@ -328,15 +336,41 @@ class BAHAMASDataset:
         tile_idx_150 = slice(idx[4]*self.tile_size, (idx[4]+1)*self.tile_size), slice(idx[5]*self.tile_size, (idx[5]+1)*self.tile_size)
         d_100 = self.data[field][z]["100"][slice_idx_100][tile_idx_100]
         d_150 = self.data[field][z]["150"][slice_idx_150][tile_idx_150]
-                
+        
+        permutation_idx = self.sample_idx_to_tile_permutation(flat_idx)
+        d_100 = self.apply_tile_permutation(d_100, permutation_idx)
+        d_150 = self.apply_tile_permutation(d_100, permutation_idx)
+
         return d_100+d_150
     
+    def apply_tile_permutation(self, tile, permutation_idx):
+        """Apply rotations and flips to the tile."""
+
+        rot_idx = permutation_idx//4
+        flip_idx = permutation_idx%4
+        if rot_idx > 0:
+            tile = np.rot90(tile, k=rot_idx)
+        if flip_idx == 1:
+            tile = tile[:,::-1]
+        elif flip_idx == 2:
+            tile = tile[::-1]
+        elif flip_idx == 2:
+            tile = tile[::-1,::-1]
+        return tile
+        
     def sample_idx_to_redshift(self, idx):
         """Converts an index into the corresponding redshift."""
 
         redshift_idx = idx//self.n_sample
         z = self.redshifts[redshift_idx]
         return z
+
+    def sample_idx_to_tile_permutation(self, idx):
+        """Converts an index into the corresponding tile permutation."""
+
+        sample_idx = idx%self.n_sample
+        permutation_idx = idx//(self.n_sample//self.n_tile_permutation**2)
+        return permutation_idx
     
     def get_input_sample(self, idx, transform=True):
         """Get a sample for the input field.
