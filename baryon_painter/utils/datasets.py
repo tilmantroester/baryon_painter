@@ -326,7 +326,6 @@ class BAHAMASDataset:
         # Remove tile permutation offset
         no_z_no_perm_idx = no_z_idx%self.n_tile_permutation**2
         
-#         print(f"Getting stack for field {field}, z {z}, idx {flat_idx}")
         idx = np.unravel_index(no_z_no_perm_idx, dims=(self.n_stack, self.n_tile, self.n_tile, 
                                                        self.n_stack, self.n_tile, self.n_tile))
         
@@ -338,9 +337,10 @@ class BAHAMASDataset:
         d_150 = self.data[field][z]["150"][slice_idx_150][tile_idx_150]
         
         permutation_idx = self.sample_idx_to_tile_permutation(flat_idx)
-        d_100 = self.apply_tile_permutation(d_100, permutation_idx)
-        d_150 = self.apply_tile_permutation(d_100, permutation_idx)
-
+        d_100 = self.apply_tile_permutation(d_100, permutation_idx[0])
+        d_150 = self.apply_tile_permutation(d_150, permutation_idx[1])
+        
+#         print(f"Getting stack for field {field}, z {z}, idx {flat_idx}, idx(mod z) {no_z_idx}, idx(mod tile permutation){no_z_no_perm_idx}, stack_idx {idx}, permutation_idx {permutation_idx}")
         return d_100+d_150
     
     def apply_tile_permutation(self, tile, permutation_idx):
@@ -366,11 +366,14 @@ class BAHAMASDataset:
         return z
 
     def sample_idx_to_tile_permutation(self, idx):
-        """Converts an index into the corresponding tile permutation."""
-
+        """Converts an index into the corresponding tile permutations."""
         sample_idx = idx%self.n_sample
-        permutation_idx = idx//(self.n_sample//self.n_tile_permutation**2)
-        return permutation_idx
+        permutation_idx = sample_idx//(self.n_sample//self.n_tile_permutation**2)
+        permutation_idx_100, permutation_idx_150 = np.unravel_index(
+                                                    permutation_idx, 
+                                                    dims=(self.n_tile_permutation, 
+                                                          self.n_tile_permutation))
+        return permutation_idx_100, permutation_idx_150
     
     def get_input_sample(self, idx, transform=True):
         """Get a sample for the input field.

@@ -67,10 +67,11 @@ if __name__ == "__main__":
     training_dataset = datasets.BAHAMASDataset(files=training_files_info, root_path=data_path,
                                                redshifts=redshifts,
                                                label_fields=label_fields,
-                                               n_stack=n_training_stack,
+                                               n_stack=n_training_stack, stack_offset=n_validation_stack,
                                                transform=transform,
                                                inverse_transform=inv_transform,
                                                n_feature_per_field=n_scale,
+                                               tile_permutations=True,
                                                mmap_mode="r",
                                                scale_to_SLICS=True,
                                                subtract_minimum=False
@@ -78,10 +79,11 @@ if __name__ == "__main__":
     validation_dataset = datasets.BAHAMASDataset(data=training_dataset.data,
                                                redshifts=redshifts,
                                                label_fields=label_fields,
-                                               n_stack=n_validation_stack, stack_offset=n_training_stack,
+                                               n_stack=n_validation_stack, stack_offset=0,
                                                transform=transform,
                                                inverse_transform=inv_transform,
                                                n_feature_per_field=n_scale,
+                                               tile_permutations=True,
                                                mmap_mode="r",
                                                scale_to_SLICS=True,
                                                subtract_minimum=False
@@ -99,9 +101,9 @@ if __name__ == "__main__":
                         "dim_z" :       dim_z,
                         "n_x_features": n_x_feature,
                         "aux_label" :   True,
-#                         "prior_z_y" :     cvae.conv_down(in_channel=1+n_aux_label, channels=[8,16,32], scales=[2,4,4])
-#                                         + cvae.conv_block(32, 2*dim_z[0], kernel=5)
-#                                         + [("unflatten", (2, *dim_z)),],
+                        "prior_z_y" :     cvae.conv_down(in_channel=1+n_aux_label, channels=[8,16,32], scales=[2,4,4])
+                                        + cvae.conv_block(32, 2*dim_z[0], kernel=5)
+                                        + [("unflatten", (2, *dim_z)),],
                         "q_x_in" :      cvae.conv_down(in_channel=n_x_feature, channels=[8,16,32], scales=[2,4,4]),
                         "q_y_in" :      cvae.conv_down(in_channel=1+n_aux_label, channels=[8,16,32], scales=[2,4,4]),
                         "q_x_y_out" :     cvae.conv_block(64, 2*dim_z[0], kernel=5)
@@ -125,10 +127,11 @@ if __name__ == "__main__":
                                         + cvae.conv_block(8, n_x_feature, kernel=5, bias=False, batchnorm=False, activation="PReLU")
                                         + cvae.conv_block(n_x_feature, n_x_feature, kernel=3, bias=False, batchnorm=False, activation="softplus"),
     #                                      # Var
-#                                           cvae.conv_block(16, 8, kernel=7, bias=False, batchnorm=False, activation="ReLU")
-#                                         + cvae.conv_block(8, n_x_feature, kernel=5, bias=False, batchnorm=False, activation="ReLU")
-#                                         + cvae.conv_block(n_x_feature, n_x_feature, kernel=3, bias=False, batchnorm=False, activation=None)
+                                          cvae.conv_block(16, 8, kernel=7, bias=False, batchnorm=False, activation="PReLU")
+                                        + cvae.conv_block(8, n_x_feature, kernel=5, bias=False, batchnorm=False, activation="PReLU")
+                                        + cvae.conv_block(n_x_feature, n_x_feature, kernel=3, bias=False, batchnorm=False, activation=None)
                                         ),
+#                         "likelihood_scaling" : 1/(dim_x[0]*dim_x[1]*dim_x[2]),
                         "min_x_var" :   1e-7,
                         "min_z_var" :   1e-7,
                         "L" :           1,
@@ -155,18 +158,21 @@ if __name__ == "__main__":
         return min_batch_size
 
     def adaptive_lr(pepoch):
-        step = 64
-        min_pepoch = 96-step
-        min_lr = 1e-8
+        step = 32 # fast
+        min_pepoch = 64-step # fast
+#         step = 64 # slow
+#         min_pepoch = 96-step #slow
+        min_gamma = 1e-6
 
         if pepoch < min_pepoch:
             return 1
         else:
-            gamma = 0.5
-            return max(min_lr, 0.5**((pepoch-min_pepoch)//step))
+#             gamma = 0.1 # fast
+            gamma = 0.5 # slow
+            return max(min_gamma, gamma**((pepoch-min_pepoch)//step))
 
     
-    run_name = "single_scale_max_z2_res4_late_prelu_log_shift_softmax_lr1e-3_slow_decay"
+    run_name = "single_scale_max_z2_res4_var_prior_late_prelu_log_shift_softmax_lr1e-3_tile_perm_slow_decay_switched_sets"
     output_path = os.path.join(output_path, run_name)
     os.makedirs(output_path)
     with open(os.path.join(output_path, "architecture.txt"), "w") as f:
@@ -174,7 +180,7 @@ if __name__ == "__main__":
     with open(os.path.join(output_path, "architecture_built.txt"), "w") as f:
         f.write(repr(painter.model))
         
-    painter.train(n_epoch=1, n_pepoch=109, learning_rate=1e-3, batch_size=4,
+    painter.train(n_epoch=1, n_pepoch=256, learning_rate=1e-3, batch_size=4,
                   adaptive_learning_rate=adaptive_lr, 
                   adaptive_batch_size=adaptive_batch_size,
                   pepoch_size=1568,
@@ -185,7 +191,7 @@ if __name__ == "__main__":
                   loss_plot_frequency=0, mavg_window_size=50,
                   show_plots=False,
                   save_plots=True,
-                  plot_sample_var=False,
+                  plot_sample_var=True,
                   plot_power_spectra=["auto", "cross"],
                   plot_histogram=["log"],
                   output_path=output_path,
